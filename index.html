@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptPad Post-Quantum Mockup</title>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-kem/+esm"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-dsa/+esm"></script>
+
+    <style>
+        :root {
+            --primary: #3498db;
+            --success: #2ecc71;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+            --dark: #2c3e50;
+            --light: #ecf0f1;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            color: var(--dark);
+            background-color: #f9f9f9;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .description {
+            color: #666;
+            font-size: 16px;
+            max-width: 600px;
+            margin: 0 auto 20px;
+        }
+
+        #startButton {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: block;
+            margin: 20px auto;
+        }
+
+        #startButton:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        #startButton:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #output {
+            margin-top: 20px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .simulation-log {
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            background-color: #f8f9fa;
+            border-left: 4px solid var(--primary);
+            padding: 10px 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .results-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .user-header {
+            font-weight: bold;
+            font-size: 18px;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px dashed #eee;
+        }
+
+        .stat-label {
+            color: #666;
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #999;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>CryptPad Post-Quantum Cryptography Simulation</h1>
+    <p class="description">This simulation demonstrates ML-KEM-1024 encryption/decryption and ML-DSA-87 digital signatures with multiple users.</p>
+</header>
+
+<button id="startButton">Start Simulation</button>
+
+<div id="output">
+    <div id="simulation-log" class="simulation-log"></div>
+    <div id="results" class="results-container"></div>
+</div>
+
+<footer class="footer">
+    <p>Using @noble/post-quantum libraries for post-quantum cryptography</p>
+</footer>
+
+<script type="module">
+    import { User } from './User.js';
+    import { DocumentServer } from './DocumentServer.js';
+
+    const NUM_USERS = 5;
+
+    async function runSimulation() {
+        const logDiv = document.getElementById("simulation-log");
+        const resultsDiv = document.getElementById("results");
+
+        logDiv.innerHTML = "Starting simulation...<br>";
+        resultsDiv.innerHTML = "";
+
+        const users = [];
+        logDiv.innerHTML += "Initializing users...<br>";
+
+        for (let i = 0; i < NUM_USERS; i++) {
+            const user = new User(i);
+            await user.init();
+            users.push(user);
+            logDiv.innerHTML += `Initialized User ${i}<br>`;
+        }
+
+        const server = new DocumentServer(users);
+
+        logDiv.innerHTML += "<br>Starting message exchange:<br>";
+        for (const sender of users) {
+            const message = `Message from User ${sender.id}`;
+            logDiv.innerHTML += `User ${sender.id} sending message to ${NUM_USERS-1} recipients<br>`;
+
+            for (const recipient of users) {
+                if (sender.id !== recipient.id) {
+                    logDiv.innerHTML += `- Creating message for User ${recipient.id}<br>`;
+                    const block = await sender.encryptAndSignBlock(message, recipient.kemKeys.publicKey);
+                    block.recipientId = recipient.id;
+                    await server.broadcastBlock(block);
+                }
+            }
+        }
+
+        logDiv.innerHTML += "<br>Simulation completed!<br>";
+
+        // Display results in cards
+        users.forEach((u) => {
+            const userCard = document.createElement('div');
+            userCard.className = 'user-stats';
+
+            const encryptTime = u.stats.reduce((a, b) => a + (b.encryptTime || 0), 0) /
+                u.stats.filter(s => s.encryptTime).length || 0;
+            const signTime = u.stats.reduce((a, b) => a + (b.signTime || 0), 0) /
+                u.stats.filter(s => s.signTime).length || 0;
+            const decryptTime = u.stats.reduce((a, b) => a + (b.decryptTime || 0), 0) /
+                u.stats.filter(s => s.decryptTime).length || 0;
+            const verifyTime = u.stats.reduce((a, b) => a + (b.verifyTime || 0), 0) /
+                u.stats.filter(s => s.verifyTime).length || 0;
+
+            userCard.innerHTML = `
+                    <div class="user-header">User ${u.id}</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Encryption:</span>
+                        <span class="stat-value">${encryptTime.toFixed(2)} ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Signing:</span>
+                        <span class="stat-value">${signTime.toFixed(2)} ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Decryption:</span>
+                        <span class="stat-value">${decryptTime.toFixed(2)} ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Verification:</span>
+                        <span class="stat-value">${verifyTime.toFixed(2)} ms</span>
+                    </div>
+                `;
+
+            resultsDiv.appendChild(userCard);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const startButton = document.getElementById('startButton');
+        startButton.addEventListener('click', () => {
+            startButton.disabled = true;
+            startButton.textContent = "Running...";
+
+            runSimulation().then(() => {
+                startButton.disabled = false;
+                startButton.textContent = "Run Again";
+            }).catch((error) => {
+                console.error('Simulation failed:', error);
+                document.getElementById("simulation-log").innerHTML +=
+                    `<span style="color: red">Error: ${error.message}</span><br>`;
+                startButton.disabled = false;
+                startButton.textContent = "Try Again";
+            });
+        });
+    });
+</script>
+</body>
+</html>
