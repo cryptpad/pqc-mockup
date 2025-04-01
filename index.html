@@ -192,6 +192,11 @@
     </div>
 </div>
 
+<div class="parameter-item" style="margin-top: 15px; display: flex; align-items: center; justify-content: center;">
+    <input type="checkbox" id="useDistribution" style="width: auto; margin-right: 8px;">
+    <label for="useDistribution">Use statistical distributions (uniform for users 1-50000, logarithmic for documents)</label>
+</div>
+
 <button id="startButton">Start Simulation</button>
 
 <div id="output">
@@ -206,13 +211,13 @@
 <script type="module">
     import { runSimulation } from './Simulation.js';
 
-    // Function to get parameters from input fields
     function getSimulationParameters() {
         return {
             numUsers: parseInt(document.getElementById('numUsers').value, 10),
             numDocuments: parseInt(document.getElementById('numDocuments').value, 10),
             maxEditsPerUser: parseInt(document.getElementById('maxEditsPerUser').value, 10),
-            logFrequency: parseInt(document.getElementById('logFrequency').value, 10)
+            logFrequency: parseInt(document.getElementById('logFrequency').value, 10),
+            useDistribution: document.getElementById('useDistribution').checked
         };
     }
 

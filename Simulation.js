@@ -12,6 +12,18 @@ function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function getUniformInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getLogarithmicInt(min, max) {
+    min = Math.max(1, min);
+    const minLog = Math.log(min);
+    const maxLog = Math.log(max + 1);
+    const rand = Math.random() * (maxLog - minLog) + minLog;
+    return Math.floor(Math.exp(rand));
+}
+
 function assignEditorsToDocuments(users, documents) {
     for (const doc of documents){
         const rand = Math.random();
@@ -33,14 +45,26 @@ function assignEditorsToDocuments(users, documents) {
 async function simulateUserActivity(user, documents, server, logDiv, params) {
     const maxEditsPerUser = params.maxEditsPerUser;
     const logFrequency = params.logFrequency;
+    const useDistribution = params.useDistribution;
 
     const editableDocuments = documents.filter(doc => doc.editors.has(user.id));
     if (editableDocuments.length === 0) return;
 
-    const totalEdits = getRandomInt(1, maxEditsPerUser);
+    const totalEdits = useDistribution
+        ? getUniformInt(1, 50000)
+        : getRandomInt(1, maxEditsPerUser);
+
 
     for (let i = 0; i < totalEdits; i++) {
-        const doc = editableDocuments[Math.floor(Math.random() * editableDocuments.length)];
+        let doc;
+        if (useDistribution && editableDocuments.length > 1) {
+            const sortedDocs = [...editableDocuments].sort((a, b) => a.id - b.id);
+            const docIndex = getLogarithmicInt(0, sortedDocs.length - 1);
+            doc = sortedDocs[docIndex];
+        } else {
+            doc = editableDocuments[Math.floor(Math.random() * editableDocuments.length)];
+        }
+
         doc.incrementEdits();
 
         const message = `Edit ${i} on Doc ${doc.id} by User ${user.id}`;
@@ -76,9 +100,15 @@ async function runSimulation(params = {}) {
     const numDocuments = params.numDocuments || DEFAULT_NUM_DOCUMENTS;
     const maxEditsPerUser = params.maxEditsPerUser || DEFAULT_MAX_EDITS_PER_USER;
     const logFrequency = params.logFrequency || DEFAULT_LOG_FREQUENCY;
+    const useDistribution = params.useDistribution || false;
 
     const outputDiv = document.getElementById("simulation-log");
     outputDiv.innerHTML = "Starting simulation...<br>";
+
+    if (useDistribution) {
+        outputDiv.innerHTML += "Using uniform and logarithmic distribution for user activity.<br>";
+    }
+
     const resultsDiv = document.getElementById("results");
     resultsDiv.innerHTML = "";
 
@@ -115,7 +145,7 @@ async function runSimulation(params = {}) {
         documents,
         server,
         outputDiv,
-        { maxEditsPerUser, logFrequency }
+        { maxEditsPerUser, logFrequency, useDistribution }
     ));
 
     await Promise.all(userPromises);
