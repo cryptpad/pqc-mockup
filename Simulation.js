@@ -1,6 +1,7 @@
 import { User } from './User.js';
 import { DocumentServer } from './DocumentServer.js';
 import { Document } from "./Document.js";
+import {SimulationAnalytics} from "./SimulationAnalytics.js";
 
 // Default values (will be overridden by passed params)
 const DEFAULT_NUM_USERS = 30;
@@ -21,7 +22,7 @@ function getLogarithmicInt(min, max) {
     const minLog = Math.log(min);
     const maxLog = Math.log(max + 1);
     const rand = Math.random() * (maxLog - minLog) + minLog;
-    return Math.floor(Math.exp(rand));
+    return Math.floor(Math.exp(rand)- 1 + min);
 }
 
 function assignEditorsToDocuments(users, documents) {
@@ -54,13 +55,21 @@ async function simulateUserActivity(user, documents, server, logDiv, params) {
         ? getUniformInt(1, 50000)
         : getRandomInt(1, maxEditsPerUser);
 
-
     for (let i = 0; i < totalEdits; i++) {
         let doc;
+
         if (useDistribution && editableDocuments.length > 1) {
             const sortedDocs = [...editableDocuments].sort((a, b) => a.id - b.id);
-            const docIndex = getLogarithmicInt(0, sortedDocs.length - 1);
-            doc = sortedDocs[docIndex];
+
+            if (Math.random() < 0.1) {
+                doc = sortedDocs[Math.floor(Math.random() * sortedDocs.length)];
+            } else {
+                const index = Math.min(
+                    getLogarithmicInt(0, sortedDocs.length - 1),
+                    sortedDocs.length - 1
+                );
+                doc = sortedDocs[index];
+            }
         } else {
             doc = editableDocuments[Math.floor(Math.random() * editableDocuments.length)];
         }
@@ -153,7 +162,56 @@ async function runSimulation(params = {}) {
     outputDiv.innerHTML += "<br>Simulation completed.<br>";
     displayResults(users, documents, resultsDiv);
 
-    return { users, documents };
+    const analytics = new SimulationAnalytics();
+    analytics.trackSimulation(users, documents, useDistribution);
+
+    const downloadButton = document.createElement('button');
+    downloadButton.textContent = 'Download Analysis Data';
+    downloadButton.style.padding = '10px 15px';
+    downloadButton.style.backgroundColor = '#3498db';
+    downloadButton.style.color = 'white';
+    downloadButton.style.border = 'none';
+    downloadButton.style.borderRadius = '4px';
+    downloadButton.style.cursor = 'pointer';
+    downloadButton.style.marginTop = '20px';
+    downloadButton.onclick = () => analytics.downloadAsJSON();
+
+    resultsDiv.appendChild(downloadButton);
+
+    const summary = analytics.generateSummary();
+    const summaryDiv = document.createElement('div');
+    summaryDiv.className = 'summary-container';
+    summaryDiv.style.width = '100%';
+    summaryDiv.style.marginTop = '30px';
+    summaryDiv.style.backgroundColor = '#f8f9fa';
+    summaryDiv.style.padding = '15px';
+    summaryDiv.style.borderRadius = '8px';
+
+    summaryDiv.innerHTML = `
+        <h2 style="color:#3498db;text-align:center;margin-bottom:15px">Simulation Summary</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px">
+            <div>
+                <h3>Document Statistics</h3>
+                <p>Total Documents: ${summary.totalDocuments}</p>
+                <p>Total Edits: ${summary.totalEdits}</p>
+                <p>Average Edits Per Document: ${summary.averageEditsPerDocument.toFixed(2)}</p>
+                <p>Most Edited: Document ${summary.mostEditedDocument.id} (${summary.mostEditedDocument.totalEdits} edits)</p>
+                <p>Least Edited: Document ${summary.leastEditedDocument.id} (${summary.leastEditedDocument.totalEdits} edits)</p>
+                <p>${summary.distributionAnalysis}</p>
+            </div>
+            <div>
+                <h3>Cryptography Performance</h3>
+                <p>Average Encrypt Time: ${summary.cryptoPerformance.averageEncryptTime.toFixed(2)} ms</p>
+                <p>Average Sign Time: ${summary.cryptoPerformance.averageSignTime.toFixed(2)} ms</p>
+                <p>Average Decrypt Time: ${summary.cryptoPerformance.averageDecryptTime.toFixed(2)} ms</p>
+                <p>Average Verify Time: ${summary.cryptoPerformance.averageVerifyTime.toFixed(2)} ms</p>
+            </div>
+        </div>
+    `;
+
+    resultsDiv.appendChild(summaryDiv);
+
+    return { users, documents, analytics };
 }
 
 function displayResults(users, documents, resultsDiv) {
