@@ -13,7 +13,11 @@ class DocumentServer {
         if (recipient) {
             console.log(`Sending block from User ${block.userId} to User ${recipient.id}`);
             const result = await recipient.verifyAndDecryptBlock(block);
-            console.log(`[User ${recipient.id}] verified from User ${block.userId}: ${result.valid} in ${result.time.toFixed(2)}ms`);
+            console.log(
+                `[User ${recipient.id}] verified from User ${block.userId}: ` +
+                `sig=${result.signatureValid}, decrypt=${result.decryptionValid}, ` +
+                `combined=${result.valid} in ${result.time.toFixed(2)}ms`
+            );
         } else {
             console.error(`No recipient found with ID ${block.recipientId}`);
         }

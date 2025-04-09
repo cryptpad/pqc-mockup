@@ -4,165 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CryptPad Post-Quantum Mockup</title>
+    <link rel="stylesheet" href="styles/styles.css">
     <script type="module" src="https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-kem/+esm"></script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-dsa/+esm"></script>
-
-    <style>
-        :root {
-            --primary: #3498db;
-            --success: #2ecc71;
-            --warning: #f39c12;
-            --danger: #e74c3c;
-            --dark: #2c3e50;
-            --light: #ecf0f1;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-            color: var(--dark);
-            background-color: #f9f9f9;
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        h1 {
-            color: var(--primary);
-            margin-bottom: 10px;
-        }
-
-        .description {
-            color: #666;
-            font-size: 16px;
-            max-width: 600px;
-            margin: 0 auto 20px;
-        }
-
-        .parameters-container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
-        }
-
-        .parameters-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: var(--primary);
-        }
-
-        .parameter-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
-        }
-
-        .parameter-item {
-            margin-bottom: 10px;
-        }
-
-        .parameter-item label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-
-        .parameter-item input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        #startButton {
-            padding: 12px 24px;
-            font-size: 16px;
-            font-weight: bold;
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            display: block;
-            margin: 20px auto;
-        }
-
-        #startButton:hover {
-            background-color: #2980b9;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        }
-
-        #startButton:disabled {
-            background-color: #95a5a6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        #output {
-            margin-top: 20px;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-
-        .simulation-log {
-            font-family: monospace;
-            font-size: 14px;
-            line-height: 1.5;
-            background-color: #f8f9fa;
-            border-left: 4px solid var(--primary);
-            padding: 10px 15px;
-            max-height: 200px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-        }
-
-        .results-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            justify-content: center;
-        }
-
-        .section-heading {
-            text-align: center;
-            margin: 30px 0 20px;
-            width: 100%;
-        }
-
-        .section-heading h2 {
-            display: inline-block;
-            color: var(--primary);
-            padding: 0 20px 10px;
-            border-bottom: 3px solid var(--primary);
-        }
-
-        .cards-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            justify-content: center;
-            width: 100%;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            color: #999;
-            font-size: 14px;
-        }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 </head>
 <body>
 <header>
@@ -170,77 +17,64 @@
     <p class="description">This simulation demonstrates ML-KEM-1024 encryption/decryption and ML-DSA-87 digital signatures with multiple users.</p>
 </header>
 
-<div class="parameters-container">
-    <div class="parameters-title">Simulation Parameters</div>
-    <div class="parameter-grid">
-        <div class="parameter-item">
-            <label for="numUsers">Number of Users:</label>
-            <input type="number" id="numUsers" min="2" max="100" value="30">
-        </div>
-        <div class="parameter-item">
-            <label for="numDocuments">Number of Documents:</label>
-            <input type="number" id="numDocuments" min="1" max="100" value="10">
-        </div>
-        <div class="parameter-item">
-            <label for="maxEditsPerUser">Max Edits Per User:</label>
-            <input type="number" id="maxEditsPerUser" min="1" max="50000" value="1000">
-        </div>
-        <div class="parameter-item">
-            <label for="logFrequency">Log Frequency:</label>
-            <input type="number" id="logFrequency" min="100" max="10000" value="1000">
-        </div>
-    </div>
-</div>
+<main>
+    <section id="parameters" class="parameters-container">
+        <div class="parameters-title">Simulation Parameters</div>
+        <form id="simulation-form">
+            <div class="parameter-grid">
+                <div class="parameter-item">
+                    <label for="numUsers">Number of Users:</label>
+                    <input type="number" id="numUsers" min="1" max="500" value="30" required>
+                    <span class="input-hint">Min: 1, Max: 500</span>
+                </div>
+                <div class="parameter-item">
+                    <label for="numDocuments">Number of Documents:</label>
+                    <input type="number" id="numDocuments" min="1" max="500" value="10" required>
+                    <span class="input-hint">Min: 1, Max: 500</span>
+                </div>
+                <div class="parameter-item">
+                    <label for="maxEditsPerUser">Max Edits Per User:</label>
+                    <input type="number" id="maxEditsPerUser" min="1" max="50000" value="1000" required>
+                    <span class="input-hint">Min: 1, Max: 50000</span>
+                </div>
+                <div class="parameter-item">
+                    <label for="logFrequency">Log Frequency:</label>
+                    <input type="number" id="logFrequency" min="100" max="10000" value="1000" required>
+                    <span class="input-hint">Min: 100, Max: 10000</span>
+                </div>
+            </div>
 
-<div class="parameter-item" style="margin-top: 15px; display: flex; align-items: center; justify-content: center;">
-    <input type="checkbox" id="useDistribution" style="width: auto; margin-right: 8px;">
-    <label for="useDistribution">Use statistical distributions (uniform for users 1-50000, logarithmic for documents)</label>
-</div>
+            <div class="parameter-checkbox">
+                <input type="checkbox" id="useDistribution" aria-describedby="distribution-desc">
+                <label for="useDistribution">Use statistical distributions</label>
+                <p id="distribution-desc" class="checkbox-description">
+                    (uniform for users 1-50000, logarithmic for documents)
+                </p>
+            </div>
 
-<button id="startButton">Start Simulation</button>
+            <div class="button-group">
+                <button type="submit" id="startButton" class="primary-button">Start Simulation</button>
+                <button type="button" id="resetButton" class="secondary-button" disabled>Reset Results</button>
+            </div>
+        </form>
+    </section>
 
-<div id="output">
-    <div id="simulation-log" class="simulation-log"></div>
-    <div id="results" class="results-container"></div>
-</div>
+    <section id="output">
+        <div class="output-header">
+            <h2>Simulation Output</h2>
+            <div class="status-indicator" id="status-indicator">Ready</div>
+        </div>
+
+        <div id="simulation-log" class="simulation-log" aria-live="polite"></div>
+
+        <div id="results" class="results-container"></div>
+    </section>
+</main>
 
 <footer class="footer">
-    <p>Using @noble/post-quantum libraries for post-quantum cryptography</p>
+    <p>Using <a href="https://github.com/paulmillr/noble-post-quantum" target="_blank">@noble/post-quantum</a> libraries for post-quantum cryptography</p>
 </footer>
 
-<script type="module">
-    import { runSimulation } from './Simulation.js';
-
-    function getSimulationParameters() {
-        return {
-            numUsers: parseInt(document.getElementById('numUsers').value, 10),
-            numDocuments: parseInt(document.getElementById('numDocuments').value, 10),
-            maxEditsPerUser: parseInt(document.getElementById('maxEditsPerUser').value, 10),
-            logFrequency: parseInt(document.getElementById('logFrequency').value, 10),
-            useDistribution: document.getElementById('useDistribution').checked
-        };
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const startButton = document.getElementById('startButton');
-        startButton.addEventListener('click', () => {
-            startButton.disabled = true;
-            startButton.textContent = "Running...";
-
-            const params = getSimulationParameters();
-
-            runSimulation(params).then(() => {
-                startButton.disabled = false;
-                startButton.textContent = "Run Again";
-            }).catch((error) => {
-                console.error('Simulation failed:', error);
-                document.getElementById("simulation-log").innerHTML +=
-                    `<span style="color: red">Error: ${error.message}</span><br>`;
-                startButton.disabled = false;
-                startButton.textContent = "Try Again";
-            });
-        });
-    });
-</script>
+<script type="module" src="scripts/App.js"></script>
 </body>
 </html>
