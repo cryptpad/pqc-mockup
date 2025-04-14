@@ -1,7 +1,8 @@
 import { User } from '../models/User.js';
 import { DocumentServer } from '../models/DocumentServer.js';
 import { Document } from "../models/Document.js";
-import { SimulationAnalytics } from "./SimulationAnalytics.js";
+import { SimulationAnalytics } from './SimulationAnalytics.js';
+import {CRYPTO_SCHEMES} from '../utils/cryptoProvider.js';
 
 export class Simulation {
     constructor(params = {}) {
@@ -10,7 +11,8 @@ export class Simulation {
             numDocuments: params.numDocuments || 30,
             maxEditsPerUser: params.maxEditsPerUser || 50000,
             logFrequency: params.logFrequency || 1000,
-            useDistribution: params.useDistribution || false
+            useDistribution: params.useDistribution || false,
+            cryptoScheme: params.cryptoScheme || CRYPTO_SCHEMES.PQC
         };
 
         this.users = [];
@@ -76,9 +78,10 @@ export class Simulation {
     async initializeUsers() {
         this.log("Initializing users...");
         const { numUsers } = this.config;
+        const cryptoScheme = this.config.cryptoScheme;
 
         for (let i = 0; i < numUsers; i++) {
-            const user = new User(i);
+            const user = new User(i, cryptoScheme);
             const success = await user.init();
 
             if (!success) {

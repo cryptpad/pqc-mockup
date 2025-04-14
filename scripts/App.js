@@ -111,6 +111,7 @@ class SimulationApp {
             this.updateUIState('running');
 
             const params = this.getSimulationParameters();
+            this.log(`Using crypto scheme: ${params.cryptoScheme}`, 'info');
             const startTime = performance.now();
 
             if (this.resultsElement.children.length === 0) {
@@ -144,7 +145,8 @@ class SimulationApp {
             numDocuments: parseInt(document.getElementById('numDocuments').value, 10),
             maxEditsPerUser: parseInt(document.getElementById('maxEditsPerUser').value, 10),
             logFrequency: parseInt(document.getElementById('logFrequency').value, 10),
-            useDistribution: document.getElementById('useDistribution').checked
+            useDistribution: document.getElementById('useDistribution').checked,
+            cryptoScheme: document.getElementById('cryptoScheme').value
         };
     }
 

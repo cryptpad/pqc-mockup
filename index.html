@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="styles/styles.css">
     <script type="module" src="https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-kem/+esm"></script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-dsa/+esm"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl-fast.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
@@ -50,6 +52,14 @@
                 <p id="distribution-desc" class="checkbox-description">
                     (uniform for users 1-50000, logarithmic for documents)
                 </p>
+            </div>
+
+            <div class="parameter-item">
+                <label for="cryptoScheme">Cryptography Scheme:</label>
+                <select id="cryptoScheme" name="cryptoScheme">
+                    <option value="pqc" selected>Post-Quantum (ML-KEM/ML-DSA)</option>
+                    <option value="classic">Classic (NaCl)</option>
+                </select>
             </div>
 
             <div class="button-group">

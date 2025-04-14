@@ -1,23 +1,18 @@
-import { ml_kem1024 } from "https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-kem/+esm";
-import { ml_dsa87 } from "https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-dsa/+esm";
-import { utf8ToBytes, randomBytes } from "https://cdn.jsdelivr.net/npm/@noble/post-quantum/utils/+esm";
+import {getCryptoProvider, CRYPTO_SCHEMES} from '../utils/cryptoProvider.js'
 
 export class User {
-    constructor(id) {
+    constructor(id, cryptoScheme = CRYPTO_SCHEMES.PQC) {
         this.id = id;
         this.stats = [];
         this.kemKeys = null;
         this.signKeys = null;
+        this.cryptoProvider = getCryptoProvider(cryptoScheme)
     }
 
     async init() {
         try {
-            const kemSeed = randomBytes(64);
-            this.kemKeys = ml_kem1024.keygen(kemSeed);
-
-            const dsaSeed = randomBytes(32);
-            this.signKeys = ml_dsa87.keygen(dsaSeed);
-
+            this.kemKeys = this.cryptoProvider.generateKEMKeyPair();
+            this.signKeys = this.cryptoProvider.generateDSAKeyPair();
             return true;
         } catch (error) {
             console.error(`Failed to initialize keys for user ${this.id}:`, error);
@@ -31,13 +26,6 @@ export class User {
         return duration;
     }
 
-    _textToBytes(text) {
-        if (typeof text !== 'string') {
-            throw new Error('Input must be a string');
-        }
-        return utf8ToBytes(text);
-    }
-
     async encryptData(data, recipientPublicKey) {
         if (!recipientPublicKey) {
             throw new Error('Recipient public key is required');
@@ -45,21 +33,18 @@ export class User {
 
         const start = performance.now();
         try {
-            const dataBytes = this._textToBytes(data);
             console.log(`Encrypting for user with public key length: ${recipientPublicKey.length}`);
 
-            const { cipherText, sharedSecret } = ml_kem1024.encapsulate(recipientPublicKey);
+            const { cipherText, sharedSecret } = this.cryptoProvider.encapsulateSecret(recipientPublicKey);
 
             if (!cipherText || !sharedSecret) {
                 throw new Error('Encryption failed: missing cipherText or sharedSecret');
             }
 
-            // XOR encryption for now
-            const encryptedData = Array.from(dataBytes.map((b, i) =>
-                b ^ sharedSecret[i % sharedSecret.length]));
+            const encryptedData = this.cryptoProvider.encryptData(data, sharedSecret);
 
             console.log('Encryption successful', {
-                plaintextLength: dataBytes.length,
+                plaintextLength: this.cryptoProvider.textToBytes(data).length,
                 encryptedLength: encryptedData.length,
                 ciphertextLength: cipherText.length
             });
@@ -79,8 +64,7 @@ export class User {
 
         const start = performance.now();
         try {
-            const dataBytes = this._textToBytes(data);
-            const signature = ml_dsa87.sign(this.signKeys.secretKey, dataBytes);
+            const signature = this.cryptoProvider.signData(this.signKeys.secretKey, data);
 
             this._trackPerformance('signTime', start);
             return { signature, originalData: data };
@@ -111,83 +95,20 @@ export class User {
     }
 
     async verifyAndDecryptBlock(block) {
-        if (!block || !block.signature || !block.signPublicKey) {
-            throw new Error('Invalid block format');
+        if (!this.kemKeys) {
+            throw new Error('KEM keys not initialized');
         }
 
-        const startTime = performance.now();
-        let verifyTime = 0;
-        let decryptTime = 0;
-        let signatureValid = false;
-        let decryptionValid = false;
-        let decryptedData = null;
-        let error = null;
+        const result = this.cryptoProvider.verifyAndDecryptBlock(block, this.kemKeys.secretKey);
 
-        const verifyStart = performance.now();
-        const dataBytes = this._textToBytes(block.blockData);
-
-        try {
-            signatureValid = ml_dsa87.verify(block.signPublicKey, dataBytes, block.signature);
-            console.log('Raw verification result:', signatureValid, typeof signatureValid);
-
-            verifyTime = this._trackPerformance('verifyTime', verifyStart);
-
-            if (signatureValid) {
-                const decryptStart = performance.now();
-                try {
-                    console.log('Starting decryption with ciphertext length:', block.ciphertext.length);
-                    console.log('Secret key length:', this.kemKeys.secretKey.length);
-
-                    // Ensure both parameters are Uint8Array
-                    const secretKey = this.kemKeys.secretKey instanceof Uint8Array ?
-                        this.kemKeys.secretKey : new Uint8Array(this.kemKeys.secretKey);
-
-                    const ciphertext = block.ciphertext instanceof Uint8Array ?
-                        block.ciphertext : new Uint8Array(block.ciphertext);
-
-                    console.log('Secret key type:', secretKey.constructor.name);
-                    console.log('Ciphertext type:', ciphertext.constructor.name);
-
-                    try {
-                        const sharedSecret = ml_kem1024.decapsulate(ciphertext, secretKey);
-                        console.log('Decapsulation succeeded with shared secret length:', sharedSecret.length);
-
-                        const encryptedArray = block.encryptedData;
-                        const decryptedBytes = new Uint8Array(encryptedArray.length);
-
-                        for (let i = 0; i < encryptedArray.length; i++) {
-                            decryptedBytes[i] = sharedSecret[i % sharedSecret.length] ^ encryptedArray[i];
-                        }
-
-                        decryptedData = new TextDecoder().decode(decryptedBytes);
-                        decryptionValid = true;
-                    } catch (decapError) {
-                        console.error('Decapsulation error (full):', decapError);
-                        console.error('Stack trace:', decapError.stack);
-                        throw new Error(`KEM decapsulation failed: ${decapError.message}`);
-                    }
-                } catch (decryptError) {
-                    error = decryptError.message || 'Unknown decryption error';
-                    console.error('Complete decryption error:', decryptError);
-                }
-                decryptTime = this._trackPerformance('decryptTime', decryptStart);
-                console.log('Final result:', {signatureValid, decryptionValid});
-            }
-        } catch (verifyError) {
-            error = verifyError.message;
+        if (result.verifyTime) {
+            this._trackPerformance('verifyTime', performance.now() - result.verifyTime);
         }
 
-        const totalTime = performance.now() - startTime;
+        if (result.decryptTime) {
+            this._trackPerformance('decryptTime', performance.now() - result.decryptTime);
+        }
 
-        return {
-            valid: signatureValid && decryptionValid,
-            signatureValid,
-            decryptionValid,
-            time: totalTime,
-            verifyTime,
-            decryptTime,
-            decryptedData,
-            error
-        };
+        return result;
     }
 }
