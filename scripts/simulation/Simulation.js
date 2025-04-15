@@ -190,27 +190,27 @@ export class Simulation {
     }
 
     async handleEditBroadcast(user, doc, message) {
-        const recipients = [...doc.editors].filter(id => id !== user.id);
+        const recipientIds = [...doc.editors].filter(id => id !== user.id);
 
-        if (recipients.length > 0) {
-            for (const recipientId of recipients) {
-                const recipient = this.server.users.find(u => u.id === recipientId);
+        if (recipientIds.length > 0) {
+            try {
+                const recipientPublicKeys = recipientIds
+                    .map(id => this.server.users.find(u => u.id === id))
+                    .filter(recipient => recipient)  // Filter out any missing users
+                    .map(recipient => recipient.kemKeys.publicKey);
 
-                if (recipient) {
-                    try {
-                        const block = await user.encryptAndSignBlock(message, recipient.kemKeys.publicKey);
-                        block.recipientId = recipient.id;
-                        block.documentId = doc.id;
-                        await this.server.broadcastBlock(block);
-                    } catch (error) {
-                        console.error(`Failed to broadcast to user ${recipientId}:`, error);
-                    }
+                if (recipientPublicKeys.length > 0) {
+                    const block = await user.encryptAndSignBlockForMany(message, recipientPublicKeys);
+                    block.documentId = doc.id;
+
+                    await this.server.broadcastSharedBlock(block, recipientIds);
                 }
+            } catch (error) {
+                console.error(`Failed to broadcast to recipients:`, error);
             }
         } else {
             try {
-                const block = await user.encryptAndSignBlock(message, user.kemKeys.publicKey);
-                block.recipientId = user.id;
+                const block = await user.encryptAndSignBlockForMany(message, [user.kemKeys.publicKey]);
                 block.documentId = doc.id;
             } catch (error) {
                 console.error(`Failed to create self-broadcast block:`, error);

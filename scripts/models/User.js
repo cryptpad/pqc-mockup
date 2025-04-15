@@ -1,4 +1,5 @@
 import {getCryptoProvider, CRYPTO_SCHEMES} from '../utils/cryptoProvider.js'
+import {MultiRecipientCrypto} from "../utils/multiRecipientCrypto.js";
 
 export class User {
     constructor(id, cryptoScheme = CRYPTO_SCHEMES.PQC) {
@@ -6,13 +7,21 @@ export class User {
         this.stats = [];
         this.kemKeys = null;
         this.signKeys = null;
-        this.cryptoProvider = getCryptoProvider(cryptoScheme)
+        this.cryptoScheme = cryptoScheme;
+        this.cryptoProvider = getCryptoProvider(cryptoScheme);
+        this.multiRecipientCrypto = null;
     }
 
     async init() {
         try {
+            await this.cryptoProvider.init();
+
             this.kemKeys = this.cryptoProvider.generateKEMKeyPair();
             this.signKeys = this.cryptoProvider.generateDSAKeyPair();
+
+            this.multiRecipientCrypto= new MultiRecipientCrypto(this, this.cryptoScheme);
+            await this.cryptoProvider.init();
+
             return true;
         } catch (error) {
             console.error(`Failed to initialize keys for user ${this.id}:`, error);
@@ -26,6 +35,15 @@ export class User {
         return duration;
     }
 
+    async encryptAndSignBlockForMany(message, recipientPublicKeys) {
+        return await this.multiRecipientCrypto.createSharedBlock(message, recipientPublicKeys);
+    }
+
+    async decryptSharedBlock(block) {
+        return await this.multiRecipientCrypto.decryptSharedBlock(block);
+    }
+
+    /*
     async encryptData(data, recipientPublicKey) {
         if (!recipientPublicKey) {
             throw new Error('Recipient public key is required');
@@ -56,6 +74,7 @@ export class User {
             throw new Error(`Encryption failed: ${error.message}`);
         }
     }
+
 
     async signData(data) {
         if (!this.signKeys) {
@@ -111,4 +130,5 @@ export class User {
 
         return result;
     }
+    */
 }

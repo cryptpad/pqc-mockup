@@ -1,17 +1,28 @@
 import * as pqcCrypto from './pqcCrypto.js';
-import * as classicCrypto from './classicCrypto.js';
 
 export const CRYPTO_SCHEMES = {
     PQC: 'pqc',
-    CLASSIC: 'classic'
+    NACL: 'nacl'
 };
 
 export function getCryptoProvider(scheme = CRYPTO_SCHEMES.PQC) {
-    switch (scheme) {
-        case CRYPTO_SCHEMES.CLASSIC:
-            return classicCrypto;
-        case CRYPTO_SCHEMES.PQC:
-        default:
-            return pqcCrypto;
+    if (scheme === CRYPTO_SCHEMES.NACL) {
+        return new NaclCryptoProvider();
+    } else {
+        return {
+            generateKEMKeyPair: pqcCrypto.generateKEMKeyPair,
+            generateDSAKeyPair: pqcCrypto.generateDSAKeyPair,
+            encapsulateSecret: pqcCrypto.encapsulateSecret,
+            decapsulateSecret: pqcCrypto.decapsulateSecret,
+            encryptData: pqcCrypto.encryptData,
+            decryptData: pqcCrypto.decryptData,
+            signData: pqcCrypto.signData,
+            verifySignature: pqcCrypto.verifySignature,
+            verifyAndDecryptBlock: pqcCrypto.verifyAndDecryptBlock,
+            textToBytes: pqcCrypto.textToBytes,
+            bytesToText: pqcCrypto.bytesToText,
+            createMailboxEncryptor: pqcCrypto.createMailboxEncryptor,
+            init: async () => true
+        };
     }
 }

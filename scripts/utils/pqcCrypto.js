@@ -134,3 +134,64 @@ export function signData(secretKey, data) {
 
     return ml_dsa87.sign(sk, dataBytes);
 }
+
+export function createMailboxEncryptor(keys) {
+    return {
+        encrypt: async function(data, recipientPublicKey) {
+            console.log('[PQC Mailbox] Starting encryption process');
+
+            const { cipherText, sharedSecret } = await encapsulateSecret(recipientPublicKey);
+            console.log('[PQC Mailbox] Secret encapsulated successfully');
+
+            const dataBytes = typeof data === 'string' ? textToBytes(data) : data;
+
+            const encryptedData = await encryptData(dataBytes, sharedSecret);
+            console.log('[PQC Mailbox] Data encrypted successfully');
+
+
+            const signature = await signData(keys.signingKey, dataBytes);
+            console.log('[PQC Mailbox] Data signed successfully');
+
+            return {
+                encryptedData,
+                ciphertext: cipherText,
+                signature,
+                senderPublicKey: keys.curvePublic,
+                data: dataBytes
+            };
+        },
+
+        decrypt: async function(message, senderPublicKey) {
+            console.log('[PQC Mailbox] Starting decryption process');
+            const { encryptedData, ciphertext, signature, data } = message;
+
+            if (!data) {
+                console.error('[PQC Mailbox] Missing original data needed for verification');
+                throw new Error('Missing original data needed for verification');
+            }
+
+            try {
+                console.log('[PQC Mailbox] Verifying signature...');
+                const isValid = await verifySignature(senderPublicKey, data, signature);
+                if (!isValid) {
+                    console.error('[PQC Mailbox] Signature verification failed');
+                    throw new Error('Invalid signature');
+                }
+                console.log('[PQC Mailbox] Signature verified successfully');
+
+
+                const sharedSecret = await decapsulateSecret(ciphertext, keys.curvePrivate);
+                console.log('[PQC Mailbox] Secret decapsulated successfully');
+
+                const decryptedBytes = decryptData(encryptedData, sharedSecret);
+                console.log('[PQC Mailbox] Data decrypted successfully');
+
+
+                return typeof message.data === 'string' ? bytesToText(decryptedBytes) : decryptedBytes;
+            } catch (error) {
+                console.error('[PQC Mailbox] Decryption failed:', error);
+                throw new Error(`Decryption failed: ${error.message}`);
+            }
+        }
+    };
+}
