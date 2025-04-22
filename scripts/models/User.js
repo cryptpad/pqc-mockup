@@ -1,134 +1,63 @@
-import {getCryptoProvider, CRYPTO_SCHEMES} from '../utils/cryptoProvider.js'
-import {MultiRecipientCrypto} from "../utils/multiRecipientCrypto.js";
+import { MultiRecipientCrypto } from '../utils/multiRecipientCrypto.js';
+import { getCryptoProvider, CRYPTO_SCHEMES } from '../utils/cryptoProvider.js';
 
 export class User {
     constructor(id, cryptoScheme = CRYPTO_SCHEMES.PQC) {
         this.id = id;
-        this.stats = [];
+        this.cryptoScheme = cryptoScheme;
         this.kemKeys = null;
         this.signKeys = null;
-        this.cryptoScheme = cryptoScheme;
-        this.cryptoProvider = getCryptoProvider(cryptoScheme);
         this.multiRecipientCrypto = null;
+        this.stats = [];
     }
 
     async init() {
         try {
-            await this.cryptoProvider.init();
+            const cryptoProvider = getCryptoProvider(this.cryptoScheme);
+            await cryptoProvider.init();
 
-            this.kemKeys = this.cryptoProvider.generateKEMKeyPair();
-            this.signKeys = this.cryptoProvider.generateDSAKeyPair();
+            this.kemKeys = await cryptoProvider.generateKEMKeyPair();
 
-            this.multiRecipientCrypto= new MultiRecipientCrypto(this, this.cryptoScheme);
-            await this.cryptoProvider.init();
+            this.signKeys = await cryptoProvider.generateDSAKeyPair();
+
+            this.multiRecipientCrypto = new MultiRecipientCrypto(this, this.cryptoScheme);
+
+            await this.multiRecipientCrypto.init();
 
             return true;
         } catch (error) {
-            console.error(`Failed to initialize keys for user ${this.id}:`, error);
+            console.error(`[User ${this.id}] Initialization failed:`, error);
             return false;
         }
     }
 
-    _trackPerformance(operation, startTime, data = {}) {
-        const duration = performance.now() - startTime;
-        this.stats.push({ [operation]: duration, ...data });
-        return duration;
-    }
-
-    async encryptAndSignBlockForMany(message, recipientPublicKeys) {
-        return await this.multiRecipientCrypto.createSharedBlock(message, recipientPublicKeys);
-    }
-
-    async decryptSharedBlock(block) {
-        return await this.multiRecipientCrypto.decryptSharedBlock(block);
-    }
-
-    /*
-    async encryptData(data, recipientPublicKey) {
-        if (!recipientPublicKey) {
-            throw new Error('Recipient public key is required');
+    async ensureCryptoInitialized() {
+        if (!this.multiRecipientCrypto) {
+            this.multiRecipientCrypto = new MultiRecipientCrypto(this, this.cryptoScheme);
         }
+        return this.multiRecipientCrypto.ensureInitialized();
+    }
 
-        const start = performance.now();
+    async encryptAndSignBlockForMany(data, recipientPublicKeys) {
         try {
-            console.log(`Encrypting for user with public key length: ${recipientPublicKey.length}`);
+            await this.ensureCryptoInitialized();
 
-            const { cipherText, sharedSecret } = this.cryptoProvider.encapsulateSecret(recipientPublicKey);
+            const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
 
-            if (!cipherText || !sharedSecret) {
-                throw new Error('Encryption failed: missing cipherText or sharedSecret');
-            }
-
-            const encryptedData = this.cryptoProvider.encryptData(data, sharedSecret);
-
-            console.log('Encryption successful', {
-                plaintextLength: this.cryptoProvider.textToBytes(data).length,
-                encryptedLength: encryptedData.length,
-                ciphertextLength: cipherText.length
-            });
-
-            this._trackPerformance('encryptTime', start);
-            return { encryptedData, ciphertext: cipherText };
+            return await this.multiRecipientCrypto.createSharedBlock(dataStr, recipientPublicKeys);
         } catch (error) {
-            this._trackPerformance('encryptTime', start, { error: true });
-            throw new Error(`Encryption failed: ${error.message}`);
-        }
-    }
-
-
-    async signData(data) {
-        if (!this.signKeys) {
-            throw new Error('Signing keys not initialized');
-        }
-
-        const start = performance.now();
-        try {
-            const signature = this.cryptoProvider.signData(this.signKeys.secretKey, data);
-
-            this._trackPerformance('signTime', start);
-            return { signature, originalData: data };
-        } catch (error) {
-            this._trackPerformance('signTime', start, { error: true });
-            throw new Error(`Signing failed: ${error.message}`);
-        }
-    }
-
-    async encryptAndSignBlock(blockData, recipientPublicKey) {
-        try {
-            const encryptionResult = await this.encryptData(blockData, recipientPublicKey);
-            const { signature } = await this.signData(blockData);
-
-            return {
-                userId: this.id,
-                blockData,
-                encryptedData: encryptionResult.encryptedData,
-                ciphertext: encryptionResult.ciphertext,
-                signature,
-                publicKey: this.kemKeys.publicKey,
-                signPublicKey: this.signKeys.publicKey
-            };
-        } catch (error) {
-            console.error(`Failed to encrypt and sign block for user ${this.id}:`, error);
+            console.error(`[User ${this.id}] Failed to encrypt and sign block:`, error);
             throw error;
         }
     }
 
-    async verifyAndDecryptBlock(block) {
-        if (!this.kemKeys) {
-            throw new Error('KEM keys not initialized');
+    async decryptAndVerifyBlock(block) {
+        try {
+            await this.ensureCryptoInitialized();
+            return await this.multiRecipientCrypto.decryptSharedBlock(block);
+        } catch (error) {
+            console.error(`[User ${this.id}] Failed to decrypt and verify block:`, error);
+            throw error;
         }
-
-        const result = this.cryptoProvider.verifyAndDecryptBlock(block, this.kemKeys.secretKey);
-
-        if (result.verifyTime) {
-            this._trackPerformance('verifyTime', performance.now() - result.verifyTime);
-        }
-
-        if (result.decryptTime) {
-            this._trackPerformance('decryptTime', performance.now() - result.decryptTime);
-        }
-
-        return result;
     }
-    */
 }

@@ -872,12 +872,11 @@ We assume:
         define([
             '/components/tweetnacl/nacl-fast.min.scripts',
             '/components/tweetnacl-util/nacl-util.min.scripts',
-        ], function () {
-            return factory(window.nacl, window.nacl?.util);
+        ], function (nacl, naclUtil) {
+            window.chainpad_crypto = factory(nacl, naclUtil);
+            return window.chainpad_crypto;
         });
     } else {
-        window.chainpad_crypto = factory(window.nacl);
+        window.chainpad_crypto = factory(window.nacl, window.nacl?.util);
     }
 }());
-
-

@@ -122,10 +122,10 @@ export class PQCProvider {
                 const { cipherText, sharedSecret } = await provider.encapsulateSecret(recipientPublicKey);
                 console.log('[PQC Mailbox] Secret encapsulated successfully');
 
-                // Prepare data for encryption
+
                 const dataToEncrypt = typeof data === 'string' ? data : provider.bytesToText(data);
 
-                // Use symmetric encryption
+
                 const encryptedData = provider.encryptData(dataToEncrypt, sharedSecret);
                 console.log('[PQC Mailbox] Data encrypted successfully');
 
@@ -140,7 +140,6 @@ export class PQCProvider {
                     ciphertext: cipherText,
                     signature,
                     senderPublicKey: keys.curvePublic,
-                    // Store data type for decryption
                     dataType: typeof data === 'string' ? 'string' : 'binary'
                 };
             },
@@ -153,15 +152,12 @@ export class PQCProvider {
                     const sharedSecret = await provider.decapsulateSecret(ciphertext, keys.curvePrivate);
                     console.log('[PQC Mailbox] Secret decapsulated successfully');
 
-                    // Use symmetric decryption
                     const decryptedText = provider.decryptData(encryptedData, sharedSecret);
                     console.log('[PQC Mailbox] Data decrypted successfully');
 
-                    // Convert back to appropriate data type
                     const decryptedData = dataType === 'string' ?
                         decryptedText : provider.textToBytes(decryptedText);
 
-                    // Verify signature
                     console.log('[PQC Mailbox] Verifying signature...');
                     const dataForVerification = dataType === 'string' ?
                         provider.textToBytes(decryptedText) : decryptedData;

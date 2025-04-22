@@ -5,24 +5,52 @@ export class MultiRecipientCrypto {
         this.user = user;
         this.scheme = scheme;
         this.cryptoProvider = getCryptoProvider(scheme);
+        this.initialized = false;
+        this.initPromise = null;
     }
 
     async init() {
-        return this.cryptoProvider.init();
+        if (this.initialized) {
+            return true;
+        }
+
+        if (this.initPromise) {
+            return this.initPromise;
+        }
+
+        this.initPromise = new Promise(async (resolve, reject) => {
+            try {
+                await this.cryptoProvider.init();
+                this.initialized = true;
+                resolve(true);
+            } catch (error) {
+                console.error(`[MultiRecipientCrypto] Failed to initialize provider:`, error);
+                this.initPromise = null;
+                reject(error);
+            }
+        });
+
+        return this.initPromise;
+    }
+
+    async ensureInitialized() {
+        if (!this.initialized) {
+            await this.init();
+        }
+        return this.initialized;
     }
 
     async encryptForMultipleRecipients(data, recipientPublicKeys) {
-        await this.init();
-        console.log(`[MultiRecipientCrypto] Encrypting data for ${recipientPublicKeys.length} recipients using ${this.scheme} scheme`);
-
+        await this.ensureInitialized();
 
         const keys = {
             curvePublic: this.user.kemKeys.publicKey,
             curvePrivate: this.user.kemKeys.secretKey,
-            signingKey: this.user.signKeys.secretKey
+            signingKey: this.user.signKeys.secretKey,
+            validateKey: this.user.signKeys.publicKey
         };
 
-        const encryptor = this.cryptoProvider.createMailboxEncryptor(keys);
+        const encryptor = await this.cryptoProvider.createMailboxEncryptor(keys);
 
         const encryptedVersions = {};
         const startTime = performance.now();
@@ -30,18 +58,23 @@ export class MultiRecipientCrypto {
         let encryptTime = 0;
         let signTime = 0;
 
+        const dataString = typeof data === 'string' ? data :
+            data instanceof Uint8Array ? await this.cryptoProvider.bytesToText(data) :
+            JSON.stringify(data);
+
         for (const recipientKey of recipientPublicKeys) {
-            console.log(`[MultiRecipientCrypto] Encrypting for recipient with key ending: ...${recipientKey.slice(-8).toString()}`);
-            const message = await encryptor.encrypt(data, recipientKey);
-            encryptedVersions[recipientKey] = message;
+            try {
+                const message = await encryptor.encrypt(dataString, recipientKey);
+                encryptedVersions[recipientKey] = message;
+            } catch (err) {
+                console.error(`[MultiRecipientCrypto] Failed to encrypt for recipient ${recipientKey.slice(-8)}:`, err);
+            }
         }
 
         const totalTime = performance.now() - startTime;
-        console.log(`[MultiRecipientCrypto] Encryption completed in ${totalTime.toFixed(2)}ms`);
 
-
-        signTime = totalTime * 0.3; // Estimate 30% of time for signing
-        encryptTime = totalTime * 0.7; // Estimate 70% of time for encryption
+        signTime = totalTime * 0.3;
+        encryptTime = totalTime * 0.7;
 
         const stats = {
             encryptTime,
@@ -60,18 +93,22 @@ export class MultiRecipientCrypto {
     }
 
     async createSharedBlock(data, recipientPublicKeys) {
-        // Convert data to bytes if it's a string
-        const dataBytes = typeof data === 'string' ?
-            this.cryptoProvider.textToBytes(data) : data;
+        await this.ensureInitialized();
+
+        const originalData = data;
+
+        const dataString = typeof data === 'string' ? data :
+            data instanceof Uint8Array ? await this.cryptoProvider.bytesToText(data) :
+            JSON.stringify(data);
 
         const { encryptedVersions } = await this.encryptForMultipleRecipients(
-            dataBytes,
+            dataString,
             recipientPublicKeys
         );
 
         return {
             userId: this.user.id,
-            blockData: dataBytes,
+            blockData: originalData,
             encryptedVersions: encryptedVersions,
             signPublicKey: this.user.signKeys.publicKey,
             timestamp: Date.now(),
@@ -80,13 +117,10 @@ export class MultiRecipientCrypto {
     }
 
     async decryptSharedBlock(block) {
-        await this.init();
-        console.log(`[MultiRecipientCrypto] Attempting to decrypt block from user ${block.userId} using ${this.scheme} scheme`);
-
+        await this.ensureInitialized();
 
         const myVersion = block.encryptedVersions[this.user.kemKeys.publicKey];
         if (!myVersion) {
-            console.log(`[MultiRecipientCrypto] Available keys:`, Object.keys(block.encryptedVersions).map(k => `...${k.slice(-8).toString()}`));
             throw new Error("No encrypted version found for this user");
         }
 
@@ -97,23 +131,23 @@ export class MultiRecipientCrypto {
         let error = null;
 
         try {
-            // Create keys for decryption
             const keys = {
                 curvePublic: this.user.kemKeys.publicKey,
                 curvePrivate: this.user.kemKeys.secretKey,
-                signingKey: this.user.signKeys.secretKey
+                signingKey: this.user.signKeys.secretKey,
+                validateKey: block.signPublicKey
             };
 
-            const encryptor = this.cryptoProvider.createMailboxEncryptor(keys);
+            const encryptor = await this.cryptoProvider.createMailboxEncryptor(keys);
 
             const decryptStart = performance.now();
+
             decryptedData = await encryptor.decrypt(myVersion, block.signPublicKey);
+
             const totalDecryptTime = performance.now() - decryptStart;
 
-            verifyTime = totalDecryptTime * 0.3; // Estimate 30% for verification
-            decryptTime = totalDecryptTime * 0.7; // Estimate 70% for decryption
-
-            console.log(`[MultiRecipientCrypto] Successfully decrypted data`);
+            verifyTime = totalDecryptTime * 0.3;
+            decryptTime = totalDecryptTime * 0.7;
 
         } catch (err) {
             error = err.message;
@@ -132,9 +166,6 @@ export class MultiRecipientCrypto {
             decryptedData,
             error
         };
-
-        console.log(`[MultiRecipientCrypto] Decryption result: ${result.valid ? 'Success' : 'Failed'}`);
-
 
         this.user.stats.push({
             encryptTime: 0,

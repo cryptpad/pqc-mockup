@@ -200,20 +200,30 @@ export class Simulation {
                     .map(recipient => recipient.kemKeys.publicKey);
 
                 if (recipientPublicKeys.length > 0) {
-                    const block = await user.encryptAndSignBlockForMany(message, recipientPublicKeys);
+                    await user.ensureCryptoInitialized();
+
+                    const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+
+                    const block = await user.encryptAndSignBlockForMany(messageStr, recipientPublicKeys);
                     block.documentId = doc.id;
 
                     await this.server.broadcastSharedBlock(block, recipientIds);
                 }
             } catch (error) {
                 console.error(`Failed to broadcast to recipients:`, error);
+                this.log(`<span style="color: orange">Warning: Failed to broadcast document ${doc.id} edit: ${error.message}</span>`);
             }
         } else {
             try {
-                const block = await user.encryptAndSignBlockForMany(message, [user.kemKeys.publicKey]);
+                await user.ensureCryptoInitialized();
+
+                const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+
+                const block = await user.encryptAndSignBlockForMany(messageStr, [user.kemKeys.publicKey]);
                 block.documentId = doc.id;
             } catch (error) {
                 console.error(`Failed to create self-broadcast block:`, error);
+                this.log(`<span style="color: orange">Warning: Failed to create self-broadcast block: ${error.message}</span>`);
             }
         }
     }
@@ -367,3 +377,4 @@ export async function runSimulation(params = {}) {
     const simulation = new Simulation(params);
     return await simulation.run();
 }
+

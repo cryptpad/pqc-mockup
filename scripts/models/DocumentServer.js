@@ -1,77 +1,45 @@
-class DocumentServer {
+export class DocumentServer {
     constructor(users) {
-        this.users = users;
-        this.blocks = [];
+        this.users = users || [];
     }
 
-    /*
-    async broadcastBlock(block) {
-        this.blocks.push(block);
+    getUserById(userId) {
+        return this.users.find(user => user.id === userId) || null;
+    }
 
-        // Only send to the intended recipient (Might change after looking at CryptPad code)
-        const recipient = this.users.find(user => user.id === block.recipientId);
-
-        if (recipient) {
-            console.log(`Sending block from User ${block.userId} to User ${recipient.id}`);
-            const result = await recipient.verifyAndDecryptBlock(block);
-            console.log(
-                `[User ${recipient.id}] verified from User ${block.userId}: ` +
-                `sig=${result.signatureValid}, decrypt=${result.decryptionValid}, ` +
-                `combined=${result.valid} in ${result.time.toFixed(2)}ms`
-            );
-        } else {
-            console.error(`No recipient found with ID ${block.recipientId}`);
-        }
-    }*/
-
-    async broadcastSharedBlock(block, recipientIds) {
-        this.blocks.push(block); // Store the block
-
-        const startTime = performance.now();
-
-        // Check if recipientIds is provided correctly
-        if (!recipientIds || !Array.isArray(recipientIds)) {
-            console.error("Invalid recipientIds provided to broadcastSharedBlock:", recipientIds);
-            return { time: 0, successCount: 0, totalRecipients: 0 };
+    async broadcastSharedBlock(block, recipientIds = []) {
+        if (!block || !block.encryptedVersions) {
+            throw new Error("Invalid block structure for broadcasting");
         }
 
-        const deliveryPromises = recipientIds.map(async recipientId => {
-            const recipient = this.users.find(u => u.id === recipientId);
-
-            if (!recipient) {
-                console.warn(`Recipient user ${recipientId} not found`);
-                return false;
-            }
-
+        const deliveryResults = recipientIds.map(async (recipientId) => {
             try {
-                // Since the block already contains encrypted versions for all recipients,
-                // we just need to notify each recipient to process their version
-                const result = await recipient.decryptSharedBlock(block);
-
-                if (result && result.valid) {
-                    console.log(`[User ${recipientId}] received shared block from User ${block.userId}: decryption successful`);
-                    return true;
-                } else {
-                    console.error(`User ${recipientId} could not decrypt the block: ${result?.error || 'Unknown error'}`);
-                    return false;
+                const recipient = this.getUserById(recipientId);
+                
+                if (!recipient) {
+                    throw new Error(`Recipient ${recipientId} not found`);
                 }
+                
+                if (!recipient.decryptAndVerifyBlock || typeof recipient.decryptAndVerifyBlock !== 'function') {
+                    throw new Error(`Recipient ${recipientId} cannot decrypt blocks (missing decryptAndVerifyBlock method)`);
+                }
+                
+                const result = await recipient.decryptAndVerifyBlock(block);
+                return {
+                    recipientId,
+                    success: true,
+                    result
+                };
             } catch (error) {
                 console.error(`Error delivering to User ${recipientId}:`, error);
-                return false;
+                return {
+                    recipientId,
+                    success: false,
+                    error: error.message
+                };
             }
         });
 
-        const results = await Promise.all(deliveryPromises);
-        const successCount = results.filter(Boolean).length;
-
-        const endTime = performance.now();
-
-        return {
-            time: endTime - startTime,
-            successCount,
-            totalRecipients: recipientIds.length
-        };
+        return Promise.all(deliveryResults);
     }
 }
-
-export {DocumentServer};
