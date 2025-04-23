@@ -8,8 +8,15 @@ export class DocumentServer {
     }
 
     async broadcastSharedBlock(block, recipientIds = []) {
-        if (!block || !block.encryptedVersions) {
-            throw new Error("Invalid block structure for broadcasting");
+        if (!block) {
+            throw new Error("Invalid block: block is undefined");
+        }
+
+        const isTeamEncrypted = block.encryptorType === 'team' && block.teamEncrypted;
+        const isMailboxEncrypted = block.encryptorType === 'mailbox' && block.encryptedVersions;
+
+        if (!isTeamEncrypted && !isMailboxEncrypted) {
+            throw new Error("Invalid block structure: missing required encryption data");
         }
 
         const deliveryResults = recipientIds.map(async (recipientId) => {

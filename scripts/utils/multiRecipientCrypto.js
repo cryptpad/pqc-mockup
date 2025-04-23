@@ -1,4 +1,4 @@
-import {getCryptoProvider, CRYPTO_SCHEMES} from './cryptoProvider.js';
+import {getCryptoProvider, CRYPTO_SCHEMES, ENCRYPTOR_TYPES} from './cryptoProvider.js';
 
 export class MultiRecipientCrypto {
     constructor(user, scheme = CRYPTO_SCHEMES.PQC) {
@@ -7,6 +7,9 @@ export class MultiRecipientCrypto {
         this.cryptoProvider = getCryptoProvider(scheme);
         this.initialized = false;
         this.initPromise = null;
+        this.mailboxEncryptor = null;
+        this.teamEncryptor = null;
+        this.teamKeys = null;
     }
 
     async init() {
@@ -40,8 +43,8 @@ export class MultiRecipientCrypto {
         return this.initialized;
     }
 
-    async encryptForMultipleRecipients(data, recipientPublicKeys) {
-        await this.ensureInitialized();
+    async createMailboxEncryptor() {
+        if (this.mailboxEncryptor) return this.mailboxEncryptor;
 
         const keys = {
             curvePublic: this.user.kemKeys.publicKey,
@@ -50,105 +53,258 @@ export class MultiRecipientCrypto {
             validateKey: this.user.signKeys.publicKey
         };
 
-        const encryptor = await this.cryptoProvider.createMailboxEncryptor(keys);
+        this.mailboxEncryptor = await this.cryptoProvider.createMailboxEncryptor(keys);
+        return this.mailboxEncryptor;
+    }
 
+    async createTeamEncryptor(teamKeys = null) {
+        if (this.teamEncryptor && !teamKeys) return this.teamEncryptor;
+
+        const keys = teamKeys || this.teamKeys || this.generateTeamKeys();
+
+        if (!keys) {
+            throw new Error('Failed to create team encryptor: no team keys available');
+        }
+
+        this.teamKeys = keys;
+        console.log(`[MultiRecipientCrypto] Creating team encryptor with ${teamKeys ? 'provided' : 'generated'} team keys`);
+
+        this.teamEncryptor = await this.cryptoProvider.createTeamEncryptor(keys);
+        return this.teamEncryptor;
+    }
+
+    generateTeamKeys() {
+        const keys = {
+            teamCurvePublic: this.user.kemKeys.publicKey,
+            teamCurvePrivate: this.user.kemKeys.secretKey,
+            teamEdPublic: this.user.signKeys.publicKey,
+            teamEdPrivate: this.user.signKeys.secretKey,
+            myCurvePublic: this.user.kemKeys.publicKey,
+            myCurvePrivate: this.user.kemKeys.secretKey
+        };
+
+        console.log('[MultiRecipientCrypto] Generated new team keys');
+        return keys;
+    }
+
+    setTeamKeys(keys) {
+        if (!keys) {
+            console.warn('[MultiRecipientCrypto] Attempted to set null team keys');
+            return;
+        }
+
+        this.teamKeys = keys;
+        this.teamEncryptor = null;
+        console.log('[MultiRecipientCrypto] Team keys set, encryptor will be recreated');
+    }
+
+    _createStats(startTime, operation = 'encrypt') {
+        const totalTime = performance.now() - startTime;
+        let stats = { totalTime };
+        
+        if (operation === 'encrypt') {
+            stats = {
+                ...stats,
+                encryptTime: totalTime * 0.7,
+                signTime: totalTime * 0.3,
+                decryptTime: 0,
+                verifyTime: 0
+            };
+        } else {
+            stats = {
+                ...stats,
+                encryptTime: 0,
+                signTime: 0,
+                decryptTime: totalTime * 0.7,
+                verifyTime: totalTime * 0.3
+            };
+        }
+
+        this.user.stats.push(stats);
+        return stats;
+    }
+
+    async _normalizeDataToString(data) {
+        if (typeof data === 'string') return data;
+        if (data instanceof Uint8Array) return await this.cryptoProvider.bytesToText(data);
+        return JSON.stringify(data);
+    }
+
+    async encryptForTeam(data) {
+        if (!this.teamKeys) {
+            console.log('[MultiRecipientCrypto] No team keys found, generating new ones');
+            this.teamKeys = this.generateTeamKeys();
+        }
+
+        const encryptor = await this.createTeamEncryptor(this.teamKeys);
+        if (!encryptor) {
+            throw new Error('Failed to create team encryptor');
+        }
+
+        const encrypted = await encryptor.encrypt(data);
+        if (!encrypted) {
+            throw new Error('Team encryption failed to produce output');
+        }
+
+        return encrypted;
+    }
+
+    async encryptForMailbox(data, recipientPublicKeys) {
+        const encryptor = await this.createMailboxEncryptor();
         const encryptedVersions = {};
-        const startTime = performance.now();
-
-        let encryptTime = 0;
-        let signTime = 0;
-
-        const dataString = typeof data === 'string' ? data :
-            data instanceof Uint8Array ? await this.cryptoProvider.bytesToText(data) :
-            JSON.stringify(data);
 
         for (const recipientKey of recipientPublicKeys) {
             try {
-                const message = await encryptor.encrypt(dataString, recipientKey);
+                const message = await encryptor.encrypt(data, recipientKey);
                 encryptedVersions[recipientKey] = message;
             } catch (err) {
                 console.error(`[MultiRecipientCrypto] Failed to encrypt for recipient ${recipientKey.slice(-8)}:`, err);
             }
         }
 
-        const totalTime = performance.now() - startTime;
-
-        signTime = totalTime * 0.3;
-        encryptTime = totalTime * 0.7;
-
-        const stats = {
-            encryptTime,
-            signTime,
-            decryptTime: 0,
-            verifyTime: 0,
-            totalTime
-        };
-
-        this.user.stats.push(stats);
-
-        return {
-            encryptedVersions,
-            stats
-        };
+        return encryptedVersions;
     }
 
-    async createSharedBlock(data, recipientPublicKeys) {
+    async encryptForMultipleRecipients(data, recipientPublicKeys, encryptorType = ENCRYPTOR_TYPES.MAILBOX) {
         await this.ensureInitialized();
+        const startTime = performance.now();
+        const dataString = await this._normalizeDataToString(data);
+
+        try {
+            if (encryptorType === ENCRYPTOR_TYPES.TEAM) {
+                console.log('[MultiRecipientCrypto] Using TEAM encryptor for message');
+                const teamEncrypted = await this.encryptForTeam(dataString);
+                return {
+                    teamEncrypted,
+                    stats: this._createStats(startTime, 'encrypt')
+                };
+            } else {
+                console.log('[MultiRecipientCrypto] Using MAILBOX encryptor for message');
+                const encryptedVersions = await this.encryptForMailbox(dataString, recipientPublicKeys);
+                return {
+                    encryptedVersions,
+                    stats: this._createStats(startTime, 'encrypt')
+                };
+            }
+        } catch (err) {
+            console.error(`[MultiRecipientCrypto] Encryption failed for ${encryptorType}:`, err);
+            throw err;
+        }
+    }
+
+    async createSharedBlock(data, recipientPublicKeys, encryptorType = ENCRYPTOR_TYPES.MAILBOX) {
+        await this.ensureInitialized();
+        console.log(`[MultiRecipientCrypto] Creating shared block with encryptor type: ${encryptorType}`);
+
+        if (encryptorType === ENCRYPTOR_TYPES.TEAM && !this.teamKeys) {
+            console.log('[MultiRecipientCrypto] Team encryption requested but no keys set, generating keys');
+            this.teamKeys = this.generateTeamKeys();
+        }
 
         const originalData = data;
+        const dataString = await this._normalizeDataToString(data);
 
-        const dataString = typeof data === 'string' ? data :
-            data instanceof Uint8Array ? await this.cryptoProvider.bytesToText(data) :
-            JSON.stringify(data);
-
-        const { encryptedVersions } = await this.encryptForMultipleRecipients(
-            dataString,
-            recipientPublicKeys
-        );
-
-        return {
+        const baseBlock = {
             userId: this.user.id,
             blockData: originalData,
-            encryptedVersions: encryptedVersions,
             signPublicKey: this.user.signKeys.publicKey,
             timestamp: Date.now(),
-            scheme: this.scheme
+            scheme: this.scheme,
+            encryptorType
         };
+
+        const { teamEncrypted, encryptedVersions } = await this.encryptForMultipleRecipients(
+            dataString,
+            recipientPublicKeys,
+            encryptorType
+        );
+
+        if (encryptorType === ENCRYPTOR_TYPES.TEAM) {
+            if (!teamEncrypted) {
+                throw new Error("Team encryption failed: no encrypted data returned");
+            }
+
+            return {
+                ...baseBlock,
+                teamEncrypted,
+                teamKeys: this.teamKeys
+            };
+        } else {
+            return {
+                ...baseBlock,
+                encryptedVersions
+            };
+        }
     }
 
-    async decryptSharedBlock(block) {
-        await this.ensureInitialized();
+    async decryptTeamBlock(block) {
+        if (!block.teamEncrypted) {
+            throw new Error("Invalid team block structure: missing teamEncrypted property");
+        }
+
+        if (block.teamKeys) {
+            this.setTeamKeys(block.teamKeys);
+        } else if (!this.teamKeys) {
+            throw new Error("No team keys available for decryption");
+        }
+
+        const encryptor = await this.createTeamEncryptor(this.teamKeys);
+        const result = await encryptor.decrypt(block.teamEncrypted, false);
+        return result.content;
+    }
+
+    async decryptMailboxBlock(block) {
+        if (!block.encryptedVersions) {
+            throw new Error("Invalid mailbox block structure: missing encryptedVersions property");
+        }
 
         const myVersion = block.encryptedVersions[this.user.kemKeys.publicKey];
         if (!myVersion) {
             throw new Error("No encrypted version found for this user");
         }
 
+        const encryptor = await this.createMailboxEncryptor();
+        if (!block.signPublicKey) {
+            throw new Error("Missing signature validation key in block");
+        }
+
+        return await encryptor.decrypt(
+            myVersion,
+            block.signPublicKey
+        );
+    }
+
+    async decryptSharedBlock(block) {
+        await this.ensureInitialized();
         const startTime = performance.now();
-        let verifyTime = 0;
-        let decryptTime = 0;
         let decryptedData = null;
         let error = null;
 
         try {
-            const keys = {
-                curvePublic: this.user.kemKeys.publicKey,
-                curvePrivate: this.user.kemKeys.secretKey,
-                signingKey: this.user.signKeys.secretKey,
-                validateKey: block.signPublicKey
-            };
+            if (!block) {
+                throw new Error("Block is undefined");
+            }
 
-            const encryptor = await this.cryptoProvider.createMailboxEncryptor(keys);
+            const isTeamEncryption = block.encryptorType === ENCRYPTOR_TYPES.TEAM;
 
             const decryptStart = performance.now();
 
-            decryptedData = await encryptor.decrypt(myVersion, block.signPublicKey);
+            if (isTeamEncryption) {
+                decryptedData = await this.decryptTeamBlock(block);
+            } else {
+                decryptedData = await this.decryptMailboxBlock(block);
+            }
 
             const totalDecryptTime = performance.now() - decryptStart;
+            const stats = {
+                encryptTime: 0,
+                signTime: 0,
+                decryptTime: totalDecryptTime * 0.7,
+                verifyTime: totalDecryptTime * 0.3,
+                totalTime: performance.now() - startTime
+            };
 
-            verifyTime = totalDecryptTime * 0.3;
-            decryptTime = totalDecryptTime * 0.7;
-
+            this.user.stats.push(stats);
         } catch (err) {
             error = err.message;
             console.error(`[MultiRecipientCrypto] Decryption error:`, err);
@@ -156,25 +312,15 @@ export class MultiRecipientCrypto {
 
         const totalTime = performance.now() - startTime;
 
-        const result = {
+        return {
             valid: !!decryptedData && !error,
             signatureValid: !!decryptedData && !error,
             decryptionValid: !!decryptedData && !error,
             time: totalTime,
-            verifyTime,
-            decryptTime,
+            verifyTime: error ? 0 : totalTime * 0.3,
+            decryptTime: error ? 0 : totalTime * 0.7,
             decryptedData,
             error
         };
-
-        this.user.stats.push({
-            encryptTime: 0,
-            signTime: 0,
-            decryptTime: result.decryptTime,
-            verifyTime: result.verifyTime,
-            totalTime: result.time
-        });
-
-        return result;
     }
 }

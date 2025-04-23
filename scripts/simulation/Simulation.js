@@ -2,7 +2,7 @@ import { User } from '../models/User.js';
 import { DocumentServer } from '../models/DocumentServer.js';
 import { Document } from "../models/Document.js";
 import { SimulationAnalytics } from './SimulationAnalytics.js';
-import {CRYPTO_SCHEMES} from '../utils/cryptoProvider.js';
+import {CRYPTO_SCHEMES, ENCRYPTOR_TYPES} from '../utils/cryptoProvider.js';
 
 export class Simulation {
     constructor(params = {}) {
@@ -12,13 +12,15 @@ export class Simulation {
             maxEditsPerUser: params.maxEditsPerUser || 50000,
             logFrequency: params.logFrequency || 1000,
             useDistribution: params.useDistribution || false,
-            cryptoScheme: params.cryptoScheme || CRYPTO_SCHEMES.PQC
+            cryptoScheme: params.cryptoScheme || CRYPTO_SCHEMES.PQC,
+            encryptorType: params.encryptorType || ENCRYPTOR_TYPES.MAILBOX
         };
 
         this.users = [];
         this.documents = [];
         this.server = null;
         this.analytics = new SimulationAnalytics();
+        this.sharedTeamKeys = null;
 
         this.logElement = document.getElementById("simulation-log");
         this.resultsElement = document.getElementById("results");
@@ -55,7 +57,8 @@ export class Simulation {
             return {
                 users: this.users,
                 documents: this.documents,
-                analytics: this.analytics
+                analytics: this.analytics,
+                sharedTeamKeys: this.sharedTeamKeys
             };
         } catch (error) {
             this.log(`<span style="color: red">Simulation error: ${error.message}</span>`);
@@ -192,39 +195,90 @@ export class Simulation {
     async handleEditBroadcast(user, doc, message) {
         const recipientIds = [...doc.editors].filter(id => id !== user.id);
 
-        if (recipientIds.length > 0) {
-            try {
-                const recipientPublicKeys = recipientIds
-                    .map(id => this.server.users.find(u => u.id === id))
-                    .filter(recipient => recipient)  // Filter out any missing users
-                    .map(recipient => recipient.kemKeys.publicKey);
+        try {
+            await user.ensureCryptoInitialized();
+            const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
 
-                if (recipientPublicKeys.length > 0) {
-                    await user.ensureCryptoInitialized();
+            if (this.config.encryptorType === ENCRYPTOR_TYPES.TEAM) {
+                try {
+                    if (!user.hasTeamKeys()) {
+                        if (!this.sharedTeamKeys) {
+                            console.log("[Simulation] Generating shared team keys for the simulation");
+                            this.sharedTeamKeys = await user.generateTeamKeys();
+                        } else {
+                            console.log("[Simulation] Using existing shared team keys");
+                            await user.setTeamKeys(this.sharedTeamKeys);
+                        }
+                    }
 
-                    const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+                    for (const recipientId of recipientIds) {
+                        const recipient = this.server.users.find(u => u.id === recipientId);
+                        if (recipient) {
+                            await recipient.setTeamKeys(this.sharedTeamKeys);
+                        }
+                    }
 
-                    const block = await user.encryptAndSignBlockForMany(messageStr, recipientPublicKeys);
+                    const recipientPublicKey = recipientIds.length > 0 
+                        ? this.server.users.find(u => u.id === recipientIds[0])?.kemKeys.publicKey 
+                        : user.kemKeys.publicKey;
+                        
+                    if (!recipientPublicKey) {
+                        throw new Error("Could not find recipient public key for team encryption");
+                    }
+                    
+                    const block = await user.encryptAndSignBlockForMany(
+                        messageStr, 
+                        [recipientPublicKey], 
+                        ENCRYPTOR_TYPES.TEAM
+                    );
+                    
+                    if (!block || !block.teamEncrypted) {
+                        throw new Error("Team encryption failed to produce valid block");
+                    }
+                    
                     block.documentId = doc.id;
+                    block.signPublicKey = user.signKeys.publicKey;
 
-                    await this.server.broadcastSharedBlock(block, recipientIds);
+                    if (recipientIds.length > 0) {
+                        await this.server.broadcastSharedBlock(block, recipientIds);
+                    }
+                } catch (error) {
+                    console.error("Team encryption error:", error);
+                    throw error;
                 }
-            } catch (error) {
-                console.error(`Failed to broadcast to recipients:`, error);
-                this.log(`<span style="color: orange">Warning: Failed to broadcast document ${doc.id} edit: ${error.message}</span>`);
-            }
-        } else {
-            try {
-                await user.ensureCryptoInitialized();
+            } else {
+                if (recipientIds.length > 0) {
+                    const recipientPublicKeys = recipientIds
+                        .map(id => this.server.users.find(u => u.id === id))
+                        .filter(recipient => recipient)
+                        .map(recipient => recipient.kemKeys.publicKey);
 
-                const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+                    if (recipientPublicKeys.length > 0) {
+                        const block = await user.encryptAndSignBlockForMany(
+                            messageStr, 
+                            recipientPublicKeys, 
+                            ENCRYPTOR_TYPES.MAILBOX
+                        );
 
-                const block = await user.encryptAndSignBlockForMany(messageStr, [user.kemKeys.publicKey]);
-                block.documentId = doc.id;
-            } catch (error) {
-                console.error(`Failed to create self-broadcast block:`, error);
-                this.log(`<span style="color: orange">Warning: Failed to create self-broadcast block: ${error.message}</span>`);
+                        block.signPublicKey = user.signKeys.publicKey;
+                        block.documentId = doc.id;
+
+                        await this.server.broadcastSharedBlock(block, recipientIds);
+                    }
+                } else {
+                    const block = await user.encryptAndSignBlockForMany(
+                        messageStr, 
+                        [user.kemKeys.publicKey], 
+                        ENCRYPTOR_TYPES.MAILBOX
+                    );
+
+                    block.signPublicKey = user.signKeys.publicKey;
+                    block.documentId = doc.id;
+                }
             }
+        } catch (error) {
+            console.error(`Failed to broadcast message:`, error);
+            this.log(`<span style="color: orange">Warning: Failed to broadcast document ${doc.id} edit: ${error.message}</span>`);
         }
     }
 
@@ -377,4 +431,3 @@ export async function runSimulation(params = {}) {
     const simulation = new Simulation(params);
     return await simulation.run();
 }
-

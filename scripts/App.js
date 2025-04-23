@@ -1,6 +1,6 @@
 import { runSimulation } from './simulation/Simulation.js';
 import { ChartRenderer } from './visualization/ChartRenderer.js';
-
+import { ENCRYPTOR_TYPES } from './utils/cryptoProvider.js';
 
 class SimulationApp {
     constructor() {
@@ -130,7 +130,6 @@ class SimulationApp {
 
             this.updateUIState('completed');
         } catch (error) {
-            // Handle errors
             console.error('Simulation error:', error);
             this.log(`Error: ${error.message}`, 'error');
             this.updateUIState('error');
@@ -140,13 +139,17 @@ class SimulationApp {
     }
 
     getSimulationParameters() {
+        const encryptorType = document.getElementById('encryptorType').value;
+        console.log(`Using encryptor type: ${encryptorType}`);
+        
         return {
             numUsers: parseInt(document.getElementById('numUsers').value, 10),
             numDocuments: parseInt(document.getElementById('numDocuments').value, 10),
             maxEditsPerUser: parseInt(document.getElementById('maxEditsPerUser').value, 10),
             logFrequency: parseInt(document.getElementById('logFrequency').value, 10),
             useDistribution: document.getElementById('useDistribution').checked,
-            cryptoScheme: document.getElementById('cryptoScheme').value
+            cryptoScheme: document.getElementById('cryptoScheme').value,
+            encryptorType: encryptorType
         };
     }
 
@@ -217,3 +220,4 @@ class SimulationApp {
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new SimulationApp();
 });
+

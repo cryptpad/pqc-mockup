@@ -5,6 +5,7 @@ import { gcm } from "https://cdn.jsdelivr.net/npm/@noble/ciphers/aes/+esm";
 export class PQCProvider {
     constructor() {
         this.initialized = false;
+        console.log('[PQCProvider] Initialized Post-Quantum crypto provider');
     }
 
     async init() {
@@ -113,6 +114,7 @@ export class PQCProvider {
     }
 
     createMailboxEncryptor(keys) {
+        console.log('[PQCProvider] Creating Mailbox encryptor with PQC');
         const provider = this;
 
         return {
@@ -122,9 +124,7 @@ export class PQCProvider {
                 const { cipherText, sharedSecret } = await provider.encapsulateSecret(recipientPublicKey);
                 console.log('[PQC Mailbox] Secret encapsulated successfully');
 
-
                 const dataToEncrypt = typeof data === 'string' ? data : provider.bytesToText(data);
-
 
                 const encryptedData = provider.encryptData(dataToEncrypt, sharedSecret);
                 console.log('[PQC Mailbox] Data encrypted successfully');
@@ -177,8 +177,42 @@ export class PQCProvider {
             }
         };
     }
+
+    createTeamEncryptor(keys) {
+        console.log('[PQCProvider] Creating Team encryptor with PQC');
+        console.log('[PQCProvider] Note: PQC Team Encryptor is not fully implemented yet, using placeholder');
+        
+        return {
+            encrypt: async function(data) {
+                console.log('[PQC Team Encryptor] Encryption called - NOT YET IMPLEMENTED');
+
+                return {
+                    notImplemented: true,
+                    message: "PQC Team Encryptor not yet implemented",
+                    placeholder: true,
+                    originalData: typeof data === 'string' ? data : JSON.stringify(data)
+                };
+            },
+            
+            decrypt: async function(message, skipValidation) {
+                console.log('[PQC Team Encryptor] Decryption called - NOT YET IMPLEMENTED');
+                console.log('[PQC Team Encryptor] Skip validation parameter:', skipValidation);
+
+                if (message && message.placeholder && message.notImplemented) {
+                    console.log('[PQC Team Encryptor] Returning placeholder data');
+                    return {
+                        content: message.originalData,
+                        author: "placeholder-author"
+                    };
+                }
+                
+                throw new Error('PQC Team Encryptor not yet implemented');
+            }
+        };
+    }
 }
 
 export function createPQCProvider() {
     return new PQCProvider();
 }
+
