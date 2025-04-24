@@ -13,7 +13,10 @@ export class PQCProvider {
         return true;
     }
 
+    // ========== Utility Methods ==========
+
     textToBytes(text) {
+        if (text instanceof Uint8Array) return text;
         return new TextEncoder().encode(text);
     }
 
@@ -31,6 +34,23 @@ export class PQCProvider {
         );
     }
 
+    concatUint8Arrays(arrays) {
+        const totalLength = arrays.reduce((acc, arr) => acc + arr.length, 0);
+        const result = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const array of arrays) {
+            result.set(array, offset);
+            offset += array.length;
+        }
+        return result;
+    }
+
+    _ensureUint8Array(data) {
+        return data instanceof Uint8Array ? data : new Uint8Array(data);
+    }
+
+    // ========== Key Generation Methods ==========
+
     generateKEMKeyPair() {
         return ml_kem1024.keygen();
     }
@@ -39,30 +59,25 @@ export class PQCProvider {
         return ml_dsa87.keygen();
     }
 
-    encapsulateSecret(publicKey) {
-        const pk = publicKey instanceof Uint8Array ?
-            publicKey : new Uint8Array(publicKey);
+    // ========== Key Encapsulation Methods ==========
 
+    encapsulateSecret(publicKey) {
+        const pk = this._ensureUint8Array(publicKey);
         return ml_kem1024.encapsulate(pk);
     }
 
     decapsulateSecret(ciphertext, secretKey) {
-        const ct = ciphertext instanceof Uint8Array ?
-            ciphertext : new Uint8Array(ciphertext);
-
-        const sk = secretKey instanceof Uint8Array ?
-            secretKey : new Uint8Array(secretKey);
-
+        const ct = this._ensureUint8Array(ciphertext);
+        const sk = this._ensureUint8Array(secretKey);
         return ml_kem1024.decapsulate(ct, sk);
     }
 
+    // ========== Symmetric Encryption Methods ==========
+
     encryptData(data, sharedSecret) {
         const dataBytes = data instanceof Uint8Array ? data : this.textToBytes(data);
-
         const iv = window.crypto.getRandomValues(new Uint8Array(12));
-
         const key = sharedSecret.slice(0, 32);
-
         const ciphertext = gcm(key, iv).encrypt(dataBytes);
 
         const result = new Uint8Array(iv.length + ciphertext.length);
@@ -75,14 +90,10 @@ export class PQCProvider {
     decryptData(encryptedData, sharedSecret) {
         try {
             const encryptedBytes = this.decodeBase64(encryptedData);
-
             const iv = encryptedBytes.slice(0, 12);
             const ciphertext = encryptedBytes.slice(12);
-
             const key = sharedSecret.slice(0, 32);
-
             const decryptedBytes = gcm(key, iv).decrypt(ciphertext);
-
             return this.bytesToText(decryptedBytes);
         } catch (error) {
             console.error('[PQC] AES Decryption error:', error);
@@ -90,28 +101,22 @@ export class PQCProvider {
         }
     }
 
+    // ========== Digital Signature Methods ==========
+
     signData(data, secretKey) {
-        const sk = secretKey instanceof Uint8Array ?
-            secretKey : new Uint8Array(secretKey);
-
-        const dataBytes = data instanceof Uint8Array ?
-            data : this.textToBytes(data);
-
+        const sk = this._ensureUint8Array(secretKey);
+        const dataBytes = data instanceof Uint8Array ? data : this.textToBytes(data);
         return ml_dsa87.sign(sk, dataBytes);
     }
 
     verifySignature(signature, data, publicKey) {
-        const pubKey = publicKey instanceof Uint8Array ?
-            publicKey : new Uint8Array(publicKey);
-
-        const dataBytes = data instanceof Uint8Array ?
-            data : this.textToBytes(data);
-
-        const sig = signature instanceof Uint8Array ?
-            signature : new Uint8Array(signature);
-
+        const pubKey = this._ensureUint8Array(publicKey);
+        const dataBytes = data instanceof Uint8Array ? data : this.textToBytes(data);
+        const sig = this._ensureUint8Array(signature);
         return ml_dsa87.verify(pubKey, dataBytes, sig);
     }
+
+    // ========== Encryptor Creation Methods ==========
 
     createMailboxEncryptor(keys) {
         console.log('[PQCProvider] Creating Mailbox encryptor with PQC');
@@ -125,7 +130,6 @@ export class PQCProvider {
                 console.log('[PQC Mailbox] Secret encapsulated successfully');
 
                 const dataToEncrypt = typeof data === 'string' ? data : provider.bytesToText(data);
-
                 const encryptedData = provider.encryptData(dataToEncrypt, sharedSecret);
                 console.log('[PQC Mailbox] Data encrypted successfully');
 
@@ -180,39 +184,152 @@ export class PQCProvider {
 
     createTeamEncryptor(keys) {
         console.log('[PQCProvider] Creating Team encryptor with PQC');
-        console.log('[PQCProvider] Note: PQC Team Encryptor is not fully implemented yet, using placeholder');
+        this.validateTeamKeys(keys);
+        const provider = this;
         
         return {
             encrypt: async function(data) {
-                console.log('[PQC Team Encryptor] Encryption called - NOT YET IMPLEMENTED');
-
-                return {
-                    notImplemented: true,
-                    message: "PQC Team Encryptor not yet implemented",
-                    placeholder: true,
-                    originalData: typeof data === 'string' ? data : JSON.stringify(data)
-                };
+                try {
+                    console.log('[PQC Team Encryptor] Encrypting data for team');
+                    return await provider.teamEncrypt(data, keys);
+                } catch (error) {
+                    console.error('[PQC Team Encryptor] Encryption failed:', error);
+                    throw new Error(`Team encryption failed: ${error.message}`);
+                }
             },
             
-            decrypt: async function(message, skipValidation) {
-                console.log('[PQC Team Encryptor] Decryption called - NOT YET IMPLEMENTED');
-                console.log('[PQC Team Encryptor] Skip validation parameter:', skipValidation);
-
-                if (message && message.placeholder && message.notImplemented) {
-                    console.log('[PQC Team Encryptor] Returning placeholder data');
-                    return {
-                        content: message.originalData,
-                        author: "placeholder-author"
-                    };
+            decrypt: async function(message, skipValidation = false) {
+                try {
+                    console.log('[PQC Team Encryptor] Decrypting team message');
+                    console.log('[PQC Team Encryptor] Skip validation parameter:', skipValidation);
+                    
+                    return await provider.teamDecrypt(message, keys, skipValidation);
+                } catch (error) {
+                    console.error('[PQC Team Encryptor] Decryption failed:', error);
+                    throw new Error(`Team decryption failed: ${error.message}`);
                 }
-                
-                throw new Error('PQC Team Encryptor not yet implemented');
             }
         };
+    }
+
+    // ========== Team Encryption Methods ==========
+
+    async teamEncrypt(data, keys) {
+        console.log('[PQC Team] Starting team encryption process');
+
+        const dataBytes = typeof data === 'string' ? this.textToBytes(data) : data;
+
+        // Inner encryption layer
+        const innerEncapsulation = await this.encapsulateSecret(keys.teamCurvePublic);
+        const innerEncrypted = this.encryptData(dataBytes, innerEncapsulation.sharedSecret);
+
+        // Create inner bundle with author information
+        const innerBundle = {
+            authorPublicKey: keys.myCurvePublic,
+            encryptedData: innerEncrypted,
+            ciphertext: this.encodeBase64(innerEncapsulation.cipherText)
+        };
+        const innerBundleBytes = this.textToBytes(JSON.stringify(innerBundle));
+
+        // Outer encryption layer
+        const ephemeralKeypair = await this.generateKEMKeyPair();
+        const outerEncapsulation = await this.encapsulateSecret(keys.teamCurvePublic);
+        const outerEncrypted = this.encryptData(innerBundleBytes, outerEncapsulation.sharedSecret);
+
+        // Create outer bundle with ephemeral key
+        const outerBundle = {
+            encryptedData: outerEncrypted,
+            ciphertext: this.encodeBase64(outerEncapsulation.cipherText),
+            ephemeralPublicKey: ephemeralKeypair.publicKey
+        };
+
+        // Sign the entire outer bundle
+        const outerBundleBytes = this.textToBytes(JSON.stringify(outerBundle));
+        const signature = await this.signData(outerBundleBytes, keys.teamEdPrivate);
+
+        return {
+            outerBundle: outerBundle,
+            signature: this.encodeBase64(signature)
+        };
+    }
+
+    async teamDecrypt(message, keys, skipValidation) {
+        console.log('[PQC Team] Starting team decryption process');
+        
+        try {
+            const { outerBundle, signature } = message;
+
+            // Validate signature if required
+            if (!skipValidation) {
+                const outerBundleBytes = this.textToBytes(JSON.stringify(outerBundle));
+                const signatureBytes = this.decodeBase64(signature);
+                const isValid = await this.verifySignature(
+                    signatureBytes, 
+                    outerBundleBytes, 
+                    keys.teamEdPublic
+                );
+                
+                if (!isValid) {
+                    console.error('[PQC Team] Signature verification failed');
+                    throw new Error('Invalid team signature');
+                }
+                console.log('[PQC Team] Signature verified successfully');
+            } else {
+                console.log('[PQC Team] Skipping signature validation as requested');
+            }
+
+            // Decrypt outer layer
+            const outerCiphertext = this.decodeBase64(outerBundle.ciphertext);
+            const outerSharedSecret = await this.decapsulateSecret(
+                outerCiphertext, 
+                keys.teamCurvePrivate
+            );
+            const decryptedOuterBundle = this.decryptData(
+                outerBundle.encryptedData, 
+                outerSharedSecret
+            );
+
+            // Parse inner bundle
+            const innerBundle = JSON.parse(decryptedOuterBundle);
+
+            // Decrypt inner layer
+            const innerCiphertext = this.decodeBase64(innerBundle.ciphertext);
+            const innerSharedSecret = await this.decapsulateSecret(
+                innerCiphertext,
+                keys.teamCurvePrivate
+            );
+            const decryptedData = this.decryptData(
+                innerBundle.encryptedData, 
+                innerSharedSecret
+            );
+
+            return {
+                content: decryptedData,
+                author: innerBundle.authorPublicKey
+            };
+        } catch (error) {
+            console.error('[PQC Team] Decryption failed:', error);
+            throw new Error(`Team decryption failed: ${error.message}`);
+        }
+    }
+
+    validateTeamKeys(keys) {
+        const requiredKeys = [
+            'teamCurvePublic', 'teamCurvePrivate',
+            'teamEdPublic', 'teamEdPrivate', 
+            'myCurvePublic', 'myCurvePrivate'
+        ];
+        
+        const missingKeys = requiredKeys.filter(key => !keys[key]);
+        if (missingKeys.length > 0) {
+            throw new Error(`Missing required team keys: ${missingKeys.join(', ')}`);
+        }
+        
+        console.log('[PQCProvider] Team keys validated successfully');
+        return true;
     }
 }
 
 export function createPQCProvider() {
     return new PQCProvider();
 }
-

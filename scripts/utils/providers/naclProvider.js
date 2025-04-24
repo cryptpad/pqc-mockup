@@ -34,6 +34,8 @@ export class NaclCryptoProvider {
         return this.initPromise;
     }
 
+    // ========== Utility Methods ==========
+
     validateCryptoModule() {
         if (!this.cryptoModule) {
             throw new Error('Failed to load chainpad_crypto module');
@@ -54,6 +56,59 @@ export class NaclCryptoProvider {
         }
         return this.initialized;
     }
+    
+    async textToBytes(text) {
+        await this.ensureInitialized();
+
+        if (text === null || text === undefined) {
+            return new Uint8Array(0);
+        }
+
+        if (text instanceof Uint8Array) {
+            return text;
+        }
+
+        try {
+            const textStr = String(text);
+            if (this.cryptoModule.Nacl?.util?.decodeUTF8) {
+                return this.cryptoModule.Nacl.util.decodeUTF8(textStr);
+            }
+            else if (this.cryptoModule.decodeUTF8) {
+                return this.cryptoModule.decodeUTF8(textStr);
+            }
+            else {
+                return new TextEncoder().encode(textStr);
+            }
+        } catch (err) {
+            console.error('[NaclProvider] Error converting text to bytes:', err);
+            return new Uint8Array(0);
+        }
+    }
+
+    async bytesToText(bytes) {
+        await this.ensureInitialized();
+
+        if (!bytes) {
+            return '';
+        }
+
+        try {
+            if (this.cryptoModule.Nacl?.util?.encodeUTF8) {
+                return this.cryptoModule.Nacl.util.encodeUTF8(bytes);
+            }
+            else if (this.cryptoModule.encodeUTF8) {
+                return this.cryptoModule.encodeUTF8(bytes);
+            }
+            else {
+                return new TextDecoder().decode(bytes);
+            }
+        } catch (err) {
+            console.error('[NaclProvider] Error converting bytes to text:', err);
+            return '';
+        }
+    }
+
+    // ========== Key Generation Methods ==========
 
     async generateKEMKeyPair() {
         await this.ensureInitialized();
@@ -72,6 +127,8 @@ export class NaclCryptoProvider {
             secretKey: this.cryptoModule.Nacl.util.encodeBase64(keypair.secretKey)
         };
     }
+
+    // ========== Encryptor Creation Methods ==========
 
     async createMailboxEncryptor(keys) {
         await this.ensureInitialized();
@@ -133,7 +190,7 @@ export class NaclCryptoProvider {
         
         try {
             this.validateTeamKeys(keys);
-            const formattedKeys = { ...keys }; // Format keys if needed in the future
+            const formattedKeys = { ...keys };
 
             console.log('[NaclProvider] Keys validated, creating team encryptor');
             const teamEncryptor = this.cryptoModule.Team.createEncryptor(formattedKeys);
@@ -195,6 +252,8 @@ export class NaclCryptoProvider {
         }
     }
 
+    // ========== Key Validation Methods ==========
+
     validateTeamKeys(keys) {
         const requiredKeys = [
             'teamCurvePublic', 'teamCurvePrivate',
@@ -222,57 +281,6 @@ export class NaclCryptoProvider {
         }
 
         return true;
-    }
-
-    async textToBytes(text) {
-        await this.ensureInitialized();
-
-        if (text === null || text === undefined) {
-            return new Uint8Array(0);
-        }
-
-        if (text instanceof Uint8Array) {
-            return text;
-        }
-
-        try {
-            const textStr = String(text);
-            if (this.cryptoModule.Nacl?.util?.decodeUTF8) {
-                return this.cryptoModule.Nacl.util.decodeUTF8(textStr);
-            }
-            else if (this.cryptoModule.decodeUTF8) {
-                return this.cryptoModule.decodeUTF8(textStr);
-            }
-            else {
-                return new TextEncoder().encode(textStr);
-            }
-        } catch (err) {
-            console.error('[NaclProvider] Error converting text to bytes:', err);
-            return new Uint8Array(0);
-        }
-    }
-
-    async bytesToText(bytes) {
-        await this.ensureInitialized();
-
-        if (!bytes) {
-            return '';
-        }
-
-        try {
-            if (this.cryptoModule.Nacl?.util?.encodeUTF8) {
-                return this.cryptoModule.Nacl.util.encodeUTF8(bytes);
-            }
-            else if (this.cryptoModule.encodeUTF8) {
-                return this.cryptoModule.encodeUTF8(bytes);
-            }
-            else {
-                return new TextDecoder().decode(bytes);
-            }
-        } catch (err) {
-            console.error('[NaclProvider] Error converting bytes to text:', err);
-            return '';
-        }
     }
 }
 
