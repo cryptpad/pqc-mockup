@@ -132,8 +132,7 @@ export class NaclCryptoProvider {
 
     async createMailboxEncryptor(keys) {
         await this.ensureInitialized();
-        console.log('[NaclProvider] Creating Mailbox encryptor with NaCl');
-        
+
         if (!this.cryptoModule || !this.cryptoModule.Mailbox) {
             throw new Error('Crypto module or Mailbox not available');
         }
@@ -144,7 +143,6 @@ export class NaclCryptoProvider {
             return {
                 encrypt: async (plain, recipient) => {
                     try {
-                        console.log('[NaclProvider] Encrypting with NaCl Mailbox encryptor');
                         if (!mailboxEncryptor.encrypt) {
                             throw new Error('Encryptor is missing encrypt method');
                         }
@@ -156,17 +154,12 @@ export class NaclCryptoProvider {
                 },
                 decrypt: async (cipher, validateKey) => {
                     try {
-                        console.log('[NaclProvider] Decrypting with NaCl Mailbox encryptor');
                         if (!mailboxEncryptor.decrypt) {
                             throw new Error('Encryptor is missing decrypt method');
                         }
 
                         const skipValidation = validateKey === undefined || validateKey === null;
-                        
-                        if (skipValidation) {
-                            console.warn('[NaclProvider] WARNING: Signature validation skipped - no validation key provided');
-                        }
-                        
+
                         return mailboxEncryptor.decrypt(cipher, validateKey, skipValidation);
                     } catch (err) {
                         console.error('[NaclProvider] Decryption failed:', err);
@@ -182,8 +175,7 @@ export class NaclCryptoProvider {
 
     async createTeamEncryptor(keys) {
         await this.ensureInitialized();
-        console.log('[NaclProvider] Creating Team encryptor with NaCl');
-        
+
         if (!this.cryptoModule || !this.cryptoModule.Team) {
             throw new Error('Crypto module or Team not available');
         }
@@ -191,20 +183,18 @@ export class NaclCryptoProvider {
         try {
             this.validateTeamKeys(keys);
             const formattedKeys = { ...keys };
-
-            console.log('[NaclProvider] Keys validated, creating team encryptor');
             const teamEncryptor = this.cryptoModule.Team.createEncryptor(formattedKeys);
 
             if (!teamEncryptor) {
                 throw new Error('Failed to create Team encryptor');
             }
 
-            console.log('[NaclProvider] Team encryptor created successfully');
+            const canEncrypt = !!teamEncryptor.encrypt;
+            const canDecrypt = !!teamEncryptor.decrypt;
 
             return {
                 encrypt: async (plain) => {
                     try {
-                        console.log('[NaclProvider] Encrypting with NaCl Team encryptor');
                         if (!teamEncryptor.encrypt) {
                             throw new Error('Team Encryptor is missing encrypt method');
                         }
@@ -220,7 +210,6 @@ export class NaclCryptoProvider {
                 },
                 decrypt: async (cipher, skipValidation) => {
                     try {
-                        console.log('[NaclProvider] Decrypting with NaCl Team encryptor');
                         if (!teamEncryptor.decrypt) {
                             throw new Error('Team Encryptor is missing decrypt method');
                         }
@@ -229,8 +218,13 @@ export class NaclCryptoProvider {
                             throw new Error('Cannot decrypt empty or null cipher');
                         }
 
-                        if (skipValidation === true) {
-                            console.warn('[NaclProvider] WARNING: Signature validation explicitly skipped for team message');
+                        try {
+                            if (typeof cipher === 'string') {
+                                this.cryptoModule.Nacl.util.decodeBase64(cipher);
+                            }
+                        } catch (e) {
+                            console.error('[NaclProvider] Invalid base64 in cipher:', e);
+                            throw new Error('Invalid base64 encoding in cipher');
                         }
 
                         const result = teamEncryptor.decrypt(cipher, skipValidation === true);
@@ -239,12 +233,26 @@ export class NaclCryptoProvider {
                             throw new Error('Team decryption returned null or undefined');
                         }
 
-                        return result;
+                        if (typeof result === 'object' && result.content) {
+                            return result;
+                        } else if (typeof result === 'string') {
+                            return {
+                                content: result,
+                                author: 'unknown'
+                            };
+                        } else {
+                            return {
+                                content: typeof result === 'object' ? JSON.stringify(result) : String(result),
+                                author: 'unknown'
+                            };
+                        }
                     } catch (err) {
                         console.error('[NaclProvider] Team decryption failed:', err);
                         throw err;
                     }
-                }
+                },
+                can_encrypt: canEncrypt,
+                can_decrypt: canDecrypt
             };
         } catch (error) {
             console.error('[NaclProvider] Error creating team encryptor:', error);

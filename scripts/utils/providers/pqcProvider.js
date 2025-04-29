@@ -5,7 +5,6 @@ import { gcm } from "https://cdn.jsdelivr.net/npm/@noble/ciphers/aes/+esm";
 export class PQCProvider {
     constructor() {
         this.initialized = false;
-        console.log('[PQCProvider] Initialized Post-Quantum crypto provider');
     }
 
     async init() {
@@ -119,25 +118,19 @@ export class PQCProvider {
     // ========== Encryptor Creation Methods ==========
 
     createMailboxEncryptor(keys) {
-        console.log('[PQCProvider] Creating Mailbox encryptor with PQC');
         const provider = this;
 
         return {
             encrypt: async function(data, recipientPublicKey) {
-                console.log('[PQC Mailbox] Starting encryption process');
-
                 const { cipherText, sharedSecret } = await provider.encapsulateSecret(recipientPublicKey);
-                console.log('[PQC Mailbox] Secret encapsulated successfully');
 
                 const dataToEncrypt = typeof data === 'string' ? data : provider.bytesToText(data);
                 const encryptedData = provider.encryptData(dataToEncrypt, sharedSecret);
-                console.log('[PQC Mailbox] Data encrypted successfully');
 
                 const signature = await provider.signData(
                     typeof data === 'string' ? provider.textToBytes(data) : data,
                     keys.signingKey
                 );
-                console.log('[PQC Mailbox] Data signed successfully');
 
                 return {
                     encryptedData,
@@ -149,29 +142,23 @@ export class PQCProvider {
             },
 
             decrypt: async function(message, senderPublicKey) {
-                console.log('[PQC Mailbox] Starting decryption process');
                 const { encryptedData, ciphertext, signature, dataType } = message;
 
                 try {
                     const sharedSecret = await provider.decapsulateSecret(ciphertext, keys.curvePrivate);
-                    console.log('[PQC Mailbox] Secret decapsulated successfully');
 
                     const decryptedText = provider.decryptData(encryptedData, sharedSecret);
-                    console.log('[PQC Mailbox] Data decrypted successfully');
 
                     const decryptedData = dataType === 'string' ?
                         decryptedText : provider.textToBytes(decryptedText);
 
-                    console.log('[PQC Mailbox] Verifying signature...');
                     const dataForVerification = dataType === 'string' ?
                         provider.textToBytes(decryptedText) : decryptedData;
                     const isValid = await provider.verifySignature(signature, dataForVerification, senderPublicKey);
 
                     if (!isValid) {
-                        console.error('[PQC Mailbox] Signature verification failed');
                         throw new Error('Invalid signature');
                     }
-                    console.log('[PQC Mailbox] Signature verified successfully');
 
                     return decryptedData;
                 } catch (error) {
@@ -183,14 +170,15 @@ export class PQCProvider {
     }
 
     createTeamEncryptor(keys) {
-        console.log('[PQCProvider] Creating Team encryptor with PQC');
         this.validateTeamKeys(keys);
         const provider = this;
+
+        const canEncrypt = true;
+        const canDecrypt = true;
         
         return {
             encrypt: async function(data) {
                 try {
-                    console.log('[PQC Team Encryptor] Encrypting data for team');
                     return await provider.teamEncrypt(data, keys);
                 } catch (error) {
                     console.error('[PQC Team Encryptor] Encryption failed:', error);
@@ -200,23 +188,21 @@ export class PQCProvider {
             
             decrypt: async function(message, skipValidation = false) {
                 try {
-                    console.log('[PQC Team Encryptor] Decrypting team message');
-                    console.log('[PQC Team Encryptor] Skip validation parameter:', skipValidation);
-                    
                     return await provider.teamDecrypt(message, keys, skipValidation);
                 } catch (error) {
                     console.error('[PQC Team Encryptor] Decryption failed:', error);
                     throw new Error(`Team decryption failed: ${error.message}`);
                 }
-            }
+            },
+
+            can_encrypt: canEncrypt,
+            can_decrypt: canDecrypt
         };
     }
 
     // ========== Team Encryption Methods ==========
 
     async teamEncrypt(data, keys) {
-        console.log('[PQC Team] Starting team encryption process');
-
         const dataBytes = typeof data === 'string' ? this.textToBytes(data) : data;
 
         // Inner encryption layer
@@ -254,8 +240,6 @@ export class PQCProvider {
     }
 
     async teamDecrypt(message, keys, skipValidation) {
-        console.log('[PQC Team] Starting team decryption process');
-        
         try {
             const { outerBundle, signature } = message;
 
@@ -270,12 +254,8 @@ export class PQCProvider {
                 );
                 
                 if (!isValid) {
-                    console.error('[PQC Team] Signature verification failed');
                     throw new Error('Invalid team signature');
                 }
-                console.log('[PQC Team] Signature verified successfully');
-            } else {
-                console.log('[PQC Team] Skipping signature validation as requested');
             }
 
             // Decrypt outer layer
@@ -325,7 +305,6 @@ export class PQCProvider {
             throw new Error(`Missing required team keys: ${missingKeys.join(', ')}`);
         }
         
-        console.log('[PQCProvider] Team keys validated successfully');
         return true;
     }
 }

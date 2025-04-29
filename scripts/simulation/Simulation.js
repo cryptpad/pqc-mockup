@@ -211,10 +211,13 @@ export class Simulation {
                         }
                     }
 
+                    // Ensure all recipients have the same team keys
                     for (const recipientId of recipientIds) {
                         const recipient = this.server.users.find(u => u.id === recipientId);
                         if (recipient) {
                             await recipient.setTeamKeys(this.sharedTeamKeys);
+                            // Verify the recipient has proper crypto initialized
+                            await recipient.ensureCryptoInitialized();
                         }
                     }
 
@@ -226,6 +229,7 @@ export class Simulation {
                         throw new Error("Could not find recipient public key for team encryption");
                     }
                     
+                    console.log(`[Simulation] Creating team encrypted block for message: ${messageStr.substring(0, 20)}...`);
                     const block = await user.encryptAndSignBlockForMany(
                         messageStr, 
                         [recipientPublicKey], 
@@ -240,10 +244,17 @@ export class Simulation {
                     block.signPublicKey = user.signKeys.publicKey;
 
                     if (recipientIds.length > 0) {
-                        await this.server.broadcastSharedBlock(block, recipientIds);
+                        console.log(`[Simulation] Broadcasting team encrypted block to ${recipientIds.length} recipients`);
+                        const results = await this.server.broadcastSharedBlock(block, recipientIds);
+
+                        const failures = results.filter(r => !r.success);
+                        if (failures.length > 0) {
+                            console.warn(`[Simulation] Failed to deliver to ${failures.length} recipients:`, 
+                                failures.map(f => `User ${f.recipientId}: ${f.error}`).join(', '));
+                        }
                     }
                 } catch (error) {
-                    console.error("Team encryption error:", error);
+                    console.error("Team encryption/delivery error:", error);
                     throw error;
                 }
             } else {
