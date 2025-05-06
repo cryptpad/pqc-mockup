@@ -62,6 +62,24 @@
                 </select>
             </div>
 
+            <div class="pqc-options" id="pqc-options">
+                <div class="parameter-item">
+                    <label for="kemScheme">KEM Scheme:</label>
+                    <select id="kemScheme" name="kemScheme">
+                        <option value="ml-kem-1024" selected>ML-KEM-1024</option>
+                        <!-- Add more KEM schemes in the future -->
+                    </select>
+                </div>
+
+                <div class="parameter-item">
+                    <label for="signatureScheme">Signature Scheme:</label>
+                    <select id="signatureScheme" name="signatureScheme">
+                        <option value="ml-dsa-87" selected>ML-DSA-87</option>
+                        <!-- Add more signature schemes in the future -->
+                    </select>
+                </div>
+            </div>
+
             <div class="parameter-item">
                 <label for="encryptorType">Encryptor Type:</label>
                 <select id="encryptorType" name="encryptorType">

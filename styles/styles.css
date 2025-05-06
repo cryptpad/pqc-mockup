@@ -411,3 +411,12 @@ main {
     margin: 10px 0;
     text-align: center;
 }
+
+/* PQC options container styles */
+.pqc-options {
+    background-color: rgba(52, 152, 219, 0.05);
+    border-left: 3px solid var(--primary);
+    margin: 15px 0;
+    padding: 15px;
+    border-radius: 4px;
+}

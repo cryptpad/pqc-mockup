@@ -10,21 +10,32 @@ class SimulationApp {
         this.logElement = document.getElementById('simulation-log');
         this.resultsElement = document.getElementById('results');
         this.statusIndicator = document.getElementById('status-indicator');
+        this.cryptoSchemeSelect = document.getElementById('cryptoScheme');
+        this.pqcOptionsContainer = document.getElementById('pqc-options');
 
         this.isRunning = false;
         this.simulationCount = 0;
 
         this.setupEventListeners();
+        
+        // Initialize display of PQC options based on current selection
+        this.togglePqcOptions();
     }
 
     setupEventListeners() {
         this.form.addEventListener('submit', (e) => this.handleSubmit(e));
         this.resetButton.addEventListener('click', () => this.resetResults());
+        this.cryptoSchemeSelect.addEventListener('change', () => this.togglePqcOptions());
 
         const inputs = this.form.querySelectorAll('input[type="number"]');
         inputs.forEach(input => {
             input.addEventListener('input', () => this.validateInput(input));
         });
+    }
+    
+    togglePqcOptions() {
+        const showPqcOptions = this.cryptoSchemeSelect.value === 'pqc';
+        this.pqcOptionsContainer.style.display = showPqcOptions ? 'block' : 'none';
     }
 
     validateInput(input) {
@@ -142,7 +153,7 @@ class SimulationApp {
         const encryptorType = document.getElementById('encryptorType').value;
         console.log(`Using encryptor type: ${encryptorType}`);
         
-        return {
+        const params = {
             numUsers: parseInt(document.getElementById('numUsers').value, 10),
             numDocuments: parseInt(document.getElementById('numDocuments').value, 10),
             maxEditsPerUser: parseInt(document.getElementById('maxEditsPerUser').value, 10),
@@ -151,6 +162,13 @@ class SimulationApp {
             cryptoScheme: document.getElementById('cryptoScheme').value,
             encryptorType: encryptorType
         };
+
+        if (params.cryptoScheme === 'pqc') {
+            params.kem = document.getElementById('kemScheme').value;
+            params.signature = document.getElementById('signatureScheme').value;
+        }
+        
+        return params;
     }
 
     updateUIState(state) {

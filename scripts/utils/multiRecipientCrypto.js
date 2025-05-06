@@ -1,10 +1,11 @@
 import {getCryptoProvider, CRYPTO_SCHEMES, ENCRYPTOR_TYPES} from './cryptoProvider.js';
 
 export class MultiRecipientCrypto {
-    constructor(user, scheme = CRYPTO_SCHEMES.PQC) {
+    constructor(user, scheme = CRYPTO_SCHEMES.PQC, cryptoOptions = {}) {
         this.user = user;
         this.scheme = scheme;
-        this.cryptoProvider = getCryptoProvider(scheme);
+        this.cryptoOptions = cryptoOptions;
+        this.cryptoProvider = getCryptoProvider(scheme, cryptoOptions);
         this.initialized = false;
         this.initPromise = null;
         this.mailboxEncryptor = null;

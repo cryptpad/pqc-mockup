@@ -1,10 +1,16 @@
-import { ml_kem1024 } from "https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-kem/+esm";
-import { ml_dsa87 } from "https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-dsa/+esm";
-import { gcm } from "https://cdn.jsdelivr.net/npm/@noble/ciphers/aes/+esm";
+import { kemSchemes, signatureSchemes, symmetricCiphers } from '../schemes/cryptoSchemes.js';
 
 export class PQCProvider {
-    constructor() {
+    constructor(options = {}) {
         this.initialized = false;
+
+        this.kemScheme = kemSchemes[options.kem || 'ml-kem-1024'];
+        this.signatureScheme = signatureSchemes[options.signature || 'ml-dsa-87'];
+        this.symmetricCipher = symmetricCiphers[options.symmetric || 'aes-gcm'];
+        
+        if (!this.kemScheme) throw new Error('Invalid KEM scheme specified');
+        if (!this.signatureScheme) throw new Error('Invalid signature scheme specified');
+        if (!this.symmetricCipher) throw new Error('Invalid symmetric cipher specified');
     }
 
     async init() {
@@ -51,52 +57,44 @@ export class PQCProvider {
     // ========== Key Generation Methods ==========
 
     generateKEMKeyPair() {
-        return ml_kem1024.keygen();
+        return this.kemScheme.keygen();
     }
 
     generateDSAKeyPair() {
-        return ml_dsa87.keygen();
+        return this.signatureScheme.keygen();
     }
 
     // ========== Key Encapsulation Methods ==========
 
     encapsulateSecret(publicKey) {
         const pk = this._ensureUint8Array(publicKey);
-        return ml_kem1024.encapsulate(pk);
+        return this.kemScheme.encapsulate(pk);
     }
 
     decapsulateSecret(ciphertext, secretKey) {
         const ct = this._ensureUint8Array(ciphertext);
         const sk = this._ensureUint8Array(secretKey);
-        return ml_kem1024.decapsulate(ct, sk);
+        return this.kemScheme.decapsulate(ct, sk);
     }
 
     // ========== Symmetric Encryption Methods ==========
 
     encryptData(data, sharedSecret) {
         const dataBytes = data instanceof Uint8Array ? data : this.textToBytes(data);
-        const iv = window.crypto.getRandomValues(new Uint8Array(12));
         const key = sharedSecret.slice(0, 32);
-        const ciphertext = gcm(key, iv).encrypt(dataBytes);
-
-        const result = new Uint8Array(iv.length + ciphertext.length);
-        result.set(iv);
-        result.set(ciphertext, iv.length);
-
-        return this.encodeBase64(result);
+        const encrypted = this.symmetricCipher.encrypt(dataBytes, key);
+        return this.encodeBase64(encrypted);
     }
 
     decryptData(encryptedData, sharedSecret) {
         try {
             const encryptedBytes = this.decodeBase64(encryptedData);
-            const iv = encryptedBytes.slice(0, 12);
-            const ciphertext = encryptedBytes.slice(12);
             const key = sharedSecret.slice(0, 32);
-            const decryptedBytes = gcm(key, iv).decrypt(ciphertext);
+            const decryptedBytes = this.symmetricCipher.decrypt(encryptedBytes, key);
             return this.bytesToText(decryptedBytes);
         } catch (error) {
-            console.error('[PQC] AES Decryption error:', error);
-            throw new Error(`AES Decryption failed: ${error.message}`);
+            console.error(`[PQC] ${this.symmetricCipher.name} Decryption error:`, error);
+            throw new Error(`${this.symmetricCipher.name} Decryption failed: ${error.message}`);
         }
     }
 
@@ -105,14 +103,14 @@ export class PQCProvider {
     signData(data, secretKey) {
         const sk = this._ensureUint8Array(secretKey);
         const dataBytes = data instanceof Uint8Array ? data : this.textToBytes(data);
-        return ml_dsa87.sign(sk, dataBytes);
+        return this.signatureScheme.sign(sk, dataBytes);
     }
 
     verifySignature(signature, data, publicKey) {
         const pubKey = this._ensureUint8Array(publicKey);
         const dataBytes = data instanceof Uint8Array ? data : this.textToBytes(data);
         const sig = this._ensureUint8Array(signature);
-        return ml_dsa87.verify(pubKey, dataBytes, sig);
+        return this.signatureScheme.verify(pubKey, dataBytes, sig);
     }
 
     // ========== Encryptor Creation Methods ==========
@@ -309,6 +307,6 @@ export class PQCProvider {
     }
 }
 
-export function createPQCProvider() {
-    return new PQCProvider();
+export function createPQCProvider(options = {}) {
+    return new PQCProvider(options);
 }
