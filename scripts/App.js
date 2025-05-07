@@ -17,8 +17,7 @@ class SimulationApp {
         this.simulationCount = 0;
 
         this.setupEventListeners();
-        
-        // Initialize display of PQC options based on current selection
+
         this.togglePqcOptions();
     }
 

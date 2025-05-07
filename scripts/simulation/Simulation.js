@@ -211,12 +211,10 @@ export class Simulation {
                         }
                     }
 
-                    // Ensure all recipients have the same team keys
                     for (const recipientId of recipientIds) {
                         const recipient = this.server.users.find(u => u.id === recipientId);
                         if (recipient) {
                             await recipient.setTeamKeys(this.sharedTeamKeys);
-                            // Verify the recipient has proper crypto initialized
                             await recipient.ensureCryptoInitialized();
                         }
                     }

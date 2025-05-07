@@ -1,10 +1,12 @@
 import { createNaclProvider } from './providers/naclProvider.js';
 import { createPQCProvider } from './providers/pqcProvider.js';
+import { createElGamalProvider } from './providers/elgamalProvider.js';
 import { kemSchemes, signatureSchemes, symmetricCiphers } from './schemes/cryptoSchemes.js';
 
 export const CRYPTO_SCHEMES = {
     PQC: 'pqc',
-    NACL: 'nacl'
+    NACL: 'nacl',
+    ELGAMAL: 'elgamal'
 };
 
 export const ENCRYPTOR_TYPES = {
@@ -19,6 +21,9 @@ export function getCryptoProvider(scheme = CRYPTO_SCHEMES.PQC, options = {}) {
     if (scheme === CRYPTO_SCHEMES.NACL) {
         console.log('[CryptoProvider] Using NaCl (TweetNaCl) implementation');
         return createNaclProvider();
+    } else if (scheme === CRYPTO_SCHEMES.ELGAMAL) {
+        console.log('[CryptoProvider] Using ElGamal hybrid encryption implementation');
+        return createElGamalProvider();
     } else {
         console.log('[CryptoProvider] Using Post-Quantum Cryptography implementation');
         console.log(`[CryptoProvider] KEM: ${options.kem || 'ml-kem-1024'}, Signature: ${options.signature || 'ml-dsa-87'}`);
