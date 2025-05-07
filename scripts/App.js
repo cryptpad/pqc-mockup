@@ -82,7 +82,8 @@ class SimulationApp {
         const charts = [
             { id: 'edit-distribution', title: 'Edit Distribution Curve', renderer: 'renderEditDistribution' },
             { id: 'user-document-network', title: 'User-Document Network Graph', renderer: 'renderUserDocumentNetwork' },
-            { id: 'performance-over-time', title: 'Performance Over Simulation Time', renderer: 'renderPerformanceOverTime' }
+            { id: 'performance-over-time', title: 'Performance Over Simulation Time', renderer: 'renderPerformanceOverTime' },
+            { id: 'crypto-size-comparison', title: 'Cryptographic Size Comparison', renderer: 'renderSizeComparison' }
         ];
 
         charts.forEach(chart => {

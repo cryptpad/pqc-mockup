@@ -107,7 +107,7 @@ export class MultiRecipientCrypto {
 
     // ========== Helper Methods ==========
 
-    _createStats(startTime, operation = 'encrypt') {
+    _createStats(startTime, operation = 'encrypt', sizes = {}) {
         const totalTime = performance.now() - startTime;
         let stats = { totalTime };
         
@@ -117,7 +117,9 @@ export class MultiRecipientCrypto {
                 encryptTime: totalTime * 0.7,
                 signTime: totalTime * 0.3,
                 decryptTime: 0,
-                verifyTime: 0
+                verifyTime: 0,
+                encryptedSize: sizes.encryptedSize || 0,
+                signatureSize: sizes.signatureSize || 0
             };
         } else {
             stats = {
@@ -137,6 +139,36 @@ export class MultiRecipientCrypto {
         if (typeof data === 'string') return data;
         if (data instanceof Uint8Array) return await this.cryptoProvider.bytesToText(data);
         return JSON.stringify(data);
+    }
+
+
+    _estimateSize(data) {
+        if (!data) return 0;
+        
+        if (typeof data === 'string') {
+            if (/^[A-Za-z0-9+/=]+$/.test(data)) {
+                const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+                return Math.floor((data.length * 3) / 4) - padding;
+            }
+            return data.length;
+        }
+        
+        if (data instanceof Uint8Array) {
+            return data.length;
+        }
+        
+        if (typeof data === 'object') {
+            return JSON.stringify(data).length;
+        }
+        
+        return 0;
+    }
+
+    _trackMessageSizes(sizes) {
+        if (!this.user.messageSizes) {
+            this.user.messageSizes = [];
+        }
+        this.user.messageSizes.push(sizes);
     }
 
     // ========== Encryption Methods ==========
@@ -170,6 +202,21 @@ export class MultiRecipientCrypto {
             try {
                 const message = await encryptor.encrypt(data, recipientKey);
                 encryptedVersions[recipientKey] = message;
+
+                if (typeof message === 'object') {
+                    const encryptedSize = this._estimateSize(message.encryptedData || message);
+                    const signatureSize = this._estimateSize(message.signature);
+                    
+                    this._trackMessageSizes({
+                        encryptedSize,
+                        signatureSize
+                    });
+                } else {
+                    const totalSize = this._estimateSize(message);
+                    this._trackMessageSizes({
+                        encryptedSize: totalSize
+                    });
+                }
             } catch (err) {
                 console.error(`[MultiRecipientCrypto] Failed to encrypt for recipient ${recipientKey.slice(-8)}:`, err);
             }
@@ -182,21 +229,39 @@ export class MultiRecipientCrypto {
         await this.ensureInitialized();
         const startTime = performance.now();
         const dataString = await this._normalizeDataToString(data);
+        let sizes = {};
 
         try {
             if (encryptorType === ENCRYPTOR_TYPES.TEAM) {
                 console.log('[MultiRecipientCrypto] Using TEAM encryptor for message');
                 const teamEncrypted = await this.encryptForTeam(dataString);
+
+                if (teamEncrypted) {
+                    sizes = {
+                        encryptedSize: this._estimateSize(teamEncrypted.outerBundle?.encryptedData),
+                        signatureSize: this._estimateSize(teamEncrypted.signature)
+                    };
+                }
+                
                 return {
                     teamEncrypted,
-                    stats: this._createStats(startTime, 'encrypt')
+                    stats: this._createStats(startTime, 'encrypt', sizes)
                 };
             } else {
                 console.log('[MultiRecipientCrypto] Using MAILBOX encryptor for message');
                 const encryptedVersions = await this.encryptForMailbox(dataString, recipientPublicKeys);
+
+                if (this.user.messageSizes?.length > 0) {
+                    const lastMsg = this.user.messageSizes[this.user.messageSizes.length - 1];
+                    sizes = {
+                        encryptedSize: lastMsg.encryptedSize || 0,
+                        signatureSize: lastMsg.signatureSize || 0
+                    };
+                }
+                
                 return {
                     encryptedVersions,
-                    stats: this._createStats(startTime, 'encrypt')
+                    stats: this._createStats(startTime, 'encrypt', sizes)
                 };
             }
         } catch (err) {
@@ -377,3 +442,4 @@ export class MultiRecipientCrypto {
         };
     }
 }
+

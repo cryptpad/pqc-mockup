@@ -5,6 +5,16 @@ export class SimulationAnalytics {
         this.distributionUsed = false;
         this.simulationTimestamp = null;
         this.executionTime = 0;
+        this.cryptoSizes = {
+            scheme: 'N/A',
+            keyPairs: {
+                kem: { publicKeySize: 0, privateKeySize: 0 },
+                signature: { publicKeySize: 0, privateKeySize: 0 }
+            },
+            messages: { ciphertextSize: 0, signatureSize: 0 },
+            count: 0,
+            averageTime: { encrypt: 0, decrypt: 0, sign: 0, verify: 0 }
+        };
     }
 
     trackSimulation(users, documents, useDistribution) {
@@ -18,6 +28,9 @@ export class SimulationAnalytics {
         this.documentStats = this.collectDocumentStats(documents);
 
         this.userStats = this.collectUserStats(users);
+        
+        // Track crypto key and message sizes
+        this.trackCryptoSizes(users);
 
         return {
             documentCount: this.documentStats.length,
@@ -100,6 +113,118 @@ export class SimulationAnalytics {
         return sumOfDifferences / (2 * n * n * mean);
     }
 
+    trackCryptoSizes(users) {
+        if (!Array.isArray(users) || users.length === 0) return;
+        
+        try {
+            // Get the first user with crypto data
+            const user = users.find(u => u && u.kemKeys && u.signKeys);
+            if (!user) return;
+            
+            // Track the scheme
+            this.cryptoSizes.scheme = user.cryptoScheme || 'N/A';
+            
+            // Track key sizes
+            if (user.kemKeys) {
+                const kemPublicSize = this.estimateKeySize(user.kemKeys.publicKey);
+                const kemPrivateSize = this.estimateKeySize(user.kemKeys.secretKey);
+                
+                this.cryptoSizes.keyPairs.kem.publicKeySize = kemPublicSize;
+                this.cryptoSizes.keyPairs.kem.privateKeySize = kemPrivateSize;
+            }
+            
+            if (user.signKeys) {
+                const signPublicSize = this.estimateKeySize(user.signKeys.publicKey);
+                const signPrivateSize = this.estimateKeySize(user.signKeys.secretKey);
+                
+                this.cryptoSizes.keyPairs.signature.publicKeySize = signPublicSize;
+                this.cryptoSizes.keyPairs.signature.privateKeySize = signPrivateSize;
+            }
+            
+            // Track message sizes
+            const messageSizes = this.collectMessageSizes(users);
+            this.cryptoSizes.messages.ciphertextSize = messageSizes.avgCiphertextSize;
+            this.cryptoSizes.messages.signatureSize = messageSizes.avgSignatureSize;
+            
+            // Count of users in the simulation
+            this.cryptoSizes.count = users.length;
+            
+            // Average operation times
+            const cryptoPerformance = this.calculateCryptoPerformanceMetrics();
+            this.cryptoSizes.averageTime = {
+                encrypt: cryptoPerformance.averageEncryptTime,
+                decrypt: cryptoPerformance.averageDecryptTime,
+                sign: cryptoPerformance.averageSignTime,
+                verify: cryptoPerformance.averageVerifyTime
+            };
+            
+        } catch (error) {
+            console.error('Error tracking crypto sizes:', error);
+        }
+    }
+    
+    estimateKeySize(keyData) {
+        if (!keyData) return 0;
+        
+        try {
+            // If it's a base64 string
+            if (typeof keyData === 'string') {
+                // Base64 encodes 3 bytes into 4 chars
+                // We need to estimate the actual binary size
+                const padding = keyData.endsWith('==') ? 2 : keyData.endsWith('=') ? 1 : 0;
+                return Math.floor((keyData.length * 3) / 4) - padding;
+            }
+            
+            // If it's a Uint8Array or similar
+            if (keyData.BYTES_PER_ELEMENT && keyData.length) {
+                return keyData.length * keyData.BYTES_PER_ELEMENT;
+            }
+            
+            // If it's an array
+            if (Array.isArray(keyData)) {
+                return keyData.length;
+            }
+            
+            // If it's an object 
+            if (typeof keyData === 'object') {
+                const json = JSON.stringify(keyData);
+                return json.length;
+            }
+            
+            return 0;
+        } catch (error) {
+            console.error('Error estimating key size:', error);
+            return 0;
+        }
+    }
+    
+    collectMessageSizes(users) {
+        let totalCiphertextSize = 0;
+        let ciphertextCount = 0;
+        let totalSignatureSize = 0;
+        let signatureCount = 0;
+        
+        users.forEach(user => {
+            if (!user.stats || !Array.isArray(user.stats)) return;
+            
+            user.stats.forEach(stat => {
+                if (stat && stat.encryptedSize) {
+                    totalCiphertextSize += stat.encryptedSize;
+                    ciphertextCount++;
+                }
+                if (stat && stat.signatureSize) {
+                    totalSignatureSize += stat.signatureSize;
+                    signatureCount++;
+                }
+            });
+        });
+        
+        return {
+            avgCiphertextSize: ciphertextCount > 0 ? Math.round(totalCiphertextSize / ciphertextCount) : 0,
+            avgSignatureSize: signatureCount > 0 ? Math.round(totalSignatureSize / signatureCount) : 0
+        };
+    }
+
     exportToJSON() {
         try {
             const data = {
@@ -110,6 +235,7 @@ export class SimulationAnalytics {
                 },
                 documentStats: this.documentStats,
                 userStats: this.userStats,
+                cryptoSizes: this.cryptoSizes,
                 summary: this.generateSummary()
             };
             return JSON.stringify(data, null, 2);

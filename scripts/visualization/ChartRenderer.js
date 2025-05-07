@@ -463,6 +463,214 @@ export class ChartRenderer {
         }
     }
 
+    // 4. Cryptographic Size Comparison Chart & Table
+    renderSizeComparison(containerId) {
+        try {
+            const { container, chartContainer, element: canvas } =
+            this.prepareContainer(containerId, 'sizeComparisonChart', 350) || {};
+            if (!container) return;
+
+            const downloadBtn = this.createDownloadButton('sizeComparisonChart', 'size-comparison.png');
+            chartContainer.appendChild(downloadBtn);
+
+            // Get size data from the analytics
+            const sizeData = this.data.cryptoSizes || {
+                scheme: 'N/A',
+                keyPairs: { kem: { publicKeySize: 0, privateKeySize: 0 }, signature: { publicKeySize: 0, privateKeySize: 0 } },
+                messages: { ciphertextSize: 0, signatureSize: 0 },
+                count: 0,
+                averageTime: { encrypt: 0, decrypt: 0, sign: 0, verify: 0 }
+            };
+
+            // Create the size comparison chart
+            new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: ['Encryption Time', 'Decryption Time', 'Signing Time', 'Verification Time'],
+                    datasets: [{
+                        label: 'Average Time (ms)',
+                        data: [
+                            sizeData.averageTime.encrypt || 0,
+                            sizeData.averageTime.decrypt || 0,
+                            sizeData.averageTime.sign || 0,
+                            sizeData.averageTime.verify || 0
+                        ],
+                        backgroundColor: [
+                            'rgba(52, 152, 219, 0.7)',  // Blue
+                            'rgba(46, 204, 113, 0.7)',  // Green
+                            'rgba(155, 89, 182, 0.7)',  // Purple
+                            'rgba(241, 196, 15, 0.7)'   // Yellow
+                        ],
+                        borderColor: [
+                            'rgba(52, 152, 219, 1)',
+                            'rgba(46, 204, 113, 1)',
+                            'rgba(155, 89, 182, 1)',
+                            'rgba(241, 196, 15, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Cryptographic Operation Times (${sizeData.scheme})`
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toFixed(2)} ms`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Time (milliseconds)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Create size comparison table
+            this.createSizeTable(chartContainer, sizeData);
+
+        } catch (error) {
+            this.handleVisualizationError(document.getElementById(containerId), error, 'size comparison chart');
+        }
+    }
+
+    createSizeTable(container, sizeData) {
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'size-table-container';
+        tableContainer.style.marginTop = '20px';
+
+        const formatSize = (bytes) => {
+            if (bytes === 0) return '0 B';
+            if (isNaN(bytes) || bytes === null || bytes === undefined) return 'N/A';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        };
+
+        const count = sizeData.count || 1;
+
+        // Calculate cumulative sizes
+        const cumulativeData = {
+            kemPublicKey: (sizeData.keyPairs.kem.publicKeySize || 0) * count,
+            kemPrivateKey: (sizeData.keyPairs.kem.privateKeySize || 0) * count,
+            signPublicKey: (sizeData.keyPairs.signature.publicKeySize || 0) * count,
+            signPrivateKey: (sizeData.keyPairs.signature.privateKeySize || 0) * count,
+            ciphertext: (sizeData.messages.ciphertextSize || 0) * count,
+            signature: (sizeData.messages.signatureSize || 0) * count
+        };
+
+        // Create the table
+        const table = document.createElement('table');
+        table.className = 'size-comparison-table';
+        table.style.width = '100%';
+        table.style.borderCollapse = 'collapse';
+        table.style.textAlign = 'left';
+
+        // Create table header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        ['Component', 'Single Size', `Cumulative (${count} instances)`].forEach(headerText => {
+            const th = document.createElement('th');
+            th.textContent = headerText;
+            th.style.padding = '8px';
+            th.style.borderBottom = '2px solid #ddd';
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Create table body
+        const tbody = document.createElement('tbody');
+
+        const rows = [
+            {
+                label: 'KEM Public Key',
+                single: sizeData.keyPairs.kem.publicKeySize,
+                cumulative: cumulativeData.kemPublicKey
+            },
+            {
+                label: 'KEM Private Key',
+                single: sizeData.keyPairs.kem.privateKeySize,
+                cumulative: cumulativeData.kemPrivateKey
+            },
+            {
+                label: 'Signature Public Key',
+                single: sizeData.keyPairs.signature.publicKeySize,
+                cumulative: cumulativeData.signPublicKey
+            },
+            {
+                label: 'Signature Private Key',
+                single: sizeData.keyPairs.signature.privateKeySize,
+                cumulative: cumulativeData.signPrivateKey
+            },
+            {
+                label: 'Average Ciphertext',
+                single: sizeData.messages.ciphertextSize,
+                cumulative: cumulativeData.ciphertext
+            },
+            {
+                label: 'Average Signature',
+                single: sizeData.messages.signatureSize,
+                cumulative: cumulativeData.signature
+            },
+            // Total row
+            {
+                label: 'TOTAL',
+                single: (sizeData.keyPairs.kem.publicKeySize || 0) +
+                    (sizeData.keyPairs.kem.privateKeySize || 0) +
+                    (sizeData.keyPairs.signature.publicKeySize || 0) +
+                    (sizeData.keyPairs.signature.privateKeySize || 0) +
+                    (sizeData.messages.ciphertextSize || 0) +
+                    (sizeData.messages.signatureSize || 0),
+                cumulative: Object.values(cumulativeData).reduce((sum, val) => sum + val, 0)
+            }
+        ];
+
+        rows.forEach((row, index) => {
+            const tr = document.createElement('tr');
+            tr.style.backgroundColor = index % 2 === 0 ? '#f9f9f9' : 'white';
+            if (index === rows.length - 1) {
+                tr.style.fontWeight = 'bold';
+                tr.style.borderTop = '2px solid #ddd';
+            }
+
+            // Component column
+            const tdLabel = document.createElement('td');
+            tdLabel.textContent = row.label;
+            tdLabel.style.padding = '8px';
+            tr.appendChild(tdLabel);
+
+            // Single size column
+            const tdSingle = document.createElement('td');
+            tdSingle.textContent = formatSize(row.single);
+            tdSingle.style.padding = '8px';
+            tr.appendChild(tdSingle);
+
+            // Cumulative size column
+            const tdCumulative = document.createElement('td');
+            tdCumulative.textContent = formatSize(row.cumulative);
+            tdCumulative.style.padding = '8px';
+            tr.appendChild(tdCumulative);
+
+            tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        tableContainer.appendChild(table);
+        container.appendChild(tableContainer);
+    }
+
     createDownloadButton(elementId, fileName, isSvg = false) {
         const button = document.createElement('button');
         button.className = 'download-button';
