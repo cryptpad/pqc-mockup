@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 XWiki CryptPad Team <contact@cryptpad.org> and Iulian-Tudor Scutaru
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # Post-Quantum Cryptography Mockup
 
 A simulation environment for testing and benchmarking post-quantum cryptography implementations against traditional cryptographic methods.

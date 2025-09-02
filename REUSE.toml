@@ -1,0 +1,10 @@
+version = 1
+SPDX-PackageName = "CryptPad"
+SPDX-PackageSupplier = "XWiki <contact@cryptpad.org>"
+SPDX-PackageDownloadLocation = "https://cryptpad.org"
+
+[[annotations]]
+path = "**.json"
+precendence = "aggregate"
+SPDX-FileCopyrightText = "2025 XWiki CryptPad Team <contact@cryptpad.org> and Iulian-Tudor Scutaru"
+SPDX-License-Identifier = "AGPL-3.0-or-later"

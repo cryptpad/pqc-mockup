@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 XWiki CryptPad Team <contact@cryptpad.org> and Iulian-Tudor Scutaru
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { runSimulation } from './simulation/Simulation.js';
 import { ChartRenderer } from './visualization/ChartRenderer.js';
 import { ENCRYPTOR_TYPES } from './utils/cryptoProvider.js';

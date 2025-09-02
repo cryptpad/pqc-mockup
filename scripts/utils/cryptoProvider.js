@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 XWiki CryptPad Team <contact@cryptpad.org> and Iulian-Tudor Scutaru
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { createNaclProvider } from './providers/naclProvider.js';
 import { createPQCProvider } from './providers/pqcProvider.js';
 import { createElGamalProvider } from './providers/elgamalProvider.js';

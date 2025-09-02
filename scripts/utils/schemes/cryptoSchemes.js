@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 XWiki CryptPad Team <contact@cryptpad.org> and Iulian-Tudor Scutaru
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { ml_kem1024 } from "https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-kem/+esm";
 import { ml_dsa87 } from "https://cdn.jsdelivr.net/npm/@noble/post-quantum/ml-dsa/+esm";
 import { gcm } from "https://cdn.jsdelivr.net/npm/@noble/ciphers/aes/+esm";
