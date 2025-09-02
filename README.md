@@ -126,4 +126,4 @@ Required provider methods: (maintain name for compatibility with existing code)
 
 ## License
 
-This project is for educational and research purposes.
+This project is provided as is under the GNU Affero General Public License v3.0.
